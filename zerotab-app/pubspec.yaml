@@ -1,0 +1,78 @@
+name: zerotab
+description: ZeroTab - Know where every rupee goes. AI-powered personal finance tracker for India.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # Supabase - auth + database
+  supabase_flutter: ^2.5.3
+
+  # State management (Riverpod)
+  flutter_riverpod: ^2.5.1
+
+  # Navigation
+  go_router: ^14.1.4
+
+  # HTTP client
+  dio: ^5.4.3+1
+
+  # Charts
+  fl_chart: ^0.68.0
+
+  # UI
+  google_fonts: ^6.2.1
+  flutter_svg: ^2.0.10+1
+  cached_network_image: ^3.3.1
+  shimmer: ^3.0.0
+  gap: ^3.0.1
+  intl: ^0.19.0
+
+  # Firebase (free - push notifications)
+  firebase_core: ^3.1.1
+  firebase_messaging: ^15.0.4
+  flutter_local_notifications: ^17.1.2
+
+  # Analytics - PostHog free tier
+  posthog_flutter: ^5.24.2
+
+  # Local storage
+  flutter_secure_storage: ^9.0.0
+  shared_preferences: ^2.2.3
+
+  # Android SMS reading
+  flutter_sms_inbox: ^1.0.3
+
+  # WebView - for Finvu AA consent
+  webview_flutter: ^4.7.0
+
+  # File picker - for CAS PDF upload
+  file_picker: ^8.0.3
+
+  # Misc
+  url_launcher: ^6.3.0
+  package_info_plus: ^8.0.0
+  connectivity_plus: ^6.0.3
+  permission_handler: ^11.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  build_runner: ^2.4.11
+
+dependency_overrides:
+  path_provider_foundation: 2.5.1
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/

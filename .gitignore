@@ -1,0 +1,58 @@
+# ── Secrets — NEVER commit these ──────────────────────────
+.env
+*.env
+.env.local
+.env.production
+google-services.json
+GoogleService-Info.plist
+
+# ── Backend ────────────────────────────────────────────────
+zerotab-backend/node_modules/
+zerotab-backend/dist/
+zerotab-backend/*.log
+zerotab-backend/npm-debug.log*
+
+# ── Flutter ────────────────────────────────────────────────
+zerotab-app/.dart_tool/
+zerotab-app/.flutter-plugins
+zerotab-app/.flutter-plugins-dependencies
+zerotab-app/build/
+zerotab-app/.packages
+zerotab-app/pubspec.lock
+zerotab-app/android/.gradle/
+zerotab-app/android/local.properties
+zerotab-app/android/captures/
+zerotab-app/ios/Pods/
+zerotab-app/ios/.symlinks/
+zerotab-app/ios/Flutter/Flutter.framework
+zerotab-app/ios/Flutter/Flutter.podspec
+zerotab-app/**/*.g.dart
+zerotab-app/**/*.freezed.dart
+
+# ── OS files ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ────────────────────────────────────────────────────
+.idea/
+.vscode/settings.json
+*.swp
+*.swo
+
+# ── Supabase local CLI cache ──────────────────────────────
+supabase/.temp/
+
+# ── Platform backups (not used) ───────────────────────────
+zerotab-app/_ios_bak/
+zerotab-app/_macos_bak/
+zerotab-app/_windows_bak/
+
+# ── Android build artifacts ──────────────────────────────
+zerotab-app/android/build/
+
+# ── Tool config ───────────────────────────────────────────
+.sixth/
+
+# ── Push script — delete after use ────────────────────────
+push_to_github.bat
