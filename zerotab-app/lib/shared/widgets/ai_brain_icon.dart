@@ -1,80 +1,121 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
-/// Premium AI icon — clean, bold, minimal.
-/// A stylized "spark" / diamond starburst that reads as intelligence
-/// at any size. Simple geometry, high visibility, unmistakably AI.
+// ── ZeroTab AI Identity Colors ─────────────────────────────────
+const _kViolet = Color(0xFF7B2FFE); // electric violet
+const _kCyan   = Color(0xFF00CFDE); // intelligence cyan
+const _kWhite  = Color(0xFFFFFFFF);
+
+/// The "Intelligence Orb" — ZeroTab's AI identity mark.
+///
+/// Anatomy:
+///  • Gradient arc ring  — violet→cyan, stroke thicker at top, thinner at bottom
+///  • Primary dot        — white with cyan bloom, at 1 o'clock (inside the arc)
+///  • Ghost micro-dot    — cyan 40%, at 7 o'clock (creates orbit balance)
+///
+/// This is a pure CustomPainter — zero dependencies, scales to any size.
 class AiBrainIcon extends StatelessWidget {
   final double size;
-  final Color iconColor;
-  const AiBrainIcon({
-    super.key,
-    required this.size,
-    this.iconColor = Colors.white,
-  });
+  const AiBrainIcon({super.key, required this.size});
 
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: CustomPaint(painter: _AiSparkPainter(color: iconColor)),
-    );
-  }
+  Widget build(BuildContext context) => SizedBox(
+        width: size,
+        height: size,
+        child: CustomPaint(painter: _OrbPainter()),
+      );
 }
 
-class _AiSparkPainter extends CustomPainter {
-  final Color color;
-  const _AiSparkPainter({required this.color});
+class _OrbPainter extends CustomPainter {
+  const _OrbPainter();
 
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final cx = w * 0.5;
-    final cy = h * 0.5;
+    final w  = size.width;
+    final h  = size.height;
+    final cx = w / 2;
+    final cy = h / 2;
+    final r  = w * 0.40; // arc radius
 
-    final fill = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
+    // ── 1. Gradient arc ring ─────────────────────────────────────
+    // We draw the arc in segments so we can fake a gradient stroke.
+    // Each segment gets an interpolated color: violet at top → cyan at bottom.
+    const segments = 120;
+    const startAngle = -math.pi / 2; // start at 12 o'clock
+    const sweep = math.pi * 2;
 
-    // ── Main 4-point spark — bold diamond starburst ─────────
-    // Vertical spike (tall & narrow)
-    final spark = Path()
-      ..moveTo(cx, h * 0.02)            // top point
-      ..quadraticBezierTo(cx + w * 0.08, cy, cx, h * 0.98)   // right curve → bottom
-      ..quadraticBezierTo(cx - w * 0.08, cy, cx, h * 0.02);  // left curve → top
-    canvas.drawPath(spark, fill);
+    for (int i = 0; i < segments; i++) {
+      final t       = i / segments;
+      final angle   = startAngle + sweep * t;
 
-    // Horizontal spike (wide & narrow)
-    final spark2 = Path()
-      ..moveTo(w * 0.02, cy)            // left point
-      ..quadraticBezierTo(cx, cy + h * 0.08, w * 0.98, cy)   // bottom curve → right
-      ..quadraticBezierTo(cx, cy - h * 0.08, w * 0.02, cy);  // top curve → left
-    canvas.drawPath(spark2, fill);
+      // Stroke width tapers: thick at top (t≈0), thin at bottom (t≈0.5),
+      // thick again at top wrap (t≈1) — creates a living, breathing feel.
+      final strokeW = 2.8 - 1.2 * math.sin(math.pi * t);
 
-    // ── Centre dot — solid bright core ──────────────────────
-    canvas.drawCircle(Offset(cx, cy), w * 0.09, fill);
+      // Color interpolates violet → cyan → violet around the ring
+      final color = Color.lerp(_kViolet, _kCyan, math.sin(math.pi * t))!;
 
-    // ── Small secondary spark (top-right) — adds depth ──────
-    final s2x = w * 0.78;
-    final s2y = h * 0.22;
-    final smallR = w * 0.12;
+      final paint = Paint()
+        ..color       = color
+        ..strokeWidth = strokeW
+        ..style       = PaintingStyle.stroke
+        ..strokeCap   = StrokeCap.round;
 
-    final miniV = Path()
-      ..moveTo(s2x, s2y - smallR)
-      ..quadraticBezierTo(s2x + smallR * 0.25, s2y, s2x, s2y + smallR)
-      ..quadraticBezierTo(s2x - smallR * 0.25, s2y, s2x, s2y - smallR);
-    canvas.drawPath(miniV, fill);
+      final segSweep = sweep / segments + 0.002; // tiny overlap prevents gaps
+      canvas.drawArc(
+        Rect.fromCircle(center: Offset(cx, cy), radius: r),
+        angle,
+        segSweep,
+        false,
+        paint,
+      );
+    }
 
-    final miniH = Path()
-      ..moveTo(s2x - smallR, s2y)
-      ..quadraticBezierTo(s2x, s2y + smallR * 0.25, s2x + smallR, s2y)
-      ..quadraticBezierTo(s2x, s2y - smallR * 0.25, s2x - smallR, s2y);
-    canvas.drawPath(miniH, fill);
+    // ── 2. Primary dot — 1 o'clock position (inside arc) ────────
+    // Angle: -60° from top = -π/2 - π/3
+    const primaryAngle = -math.pi / 2 - math.pi / 3;
+    final dotR   = r * 0.78; // slightly inside the arc ring
+    final dotX   = cx + dotR * math.cos(primaryAngle);
+    final dotY   = cy + dotR * math.sin(primaryAngle);
+    final dotSize = w * 0.095;
 
-    canvas.drawCircle(Offset(s2x, s2y), w * 0.035, fill);
+    // Cyan bloom glow behind dot
+    canvas.drawCircle(
+      Offset(dotX, dotY),
+      dotSize * 2.2,
+      Paint()
+        ..color      = _kCyan.withValues(alpha: 0.22)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+    );
+    // Secondary soft glow ring
+    canvas.drawCircle(
+      Offset(dotX, dotY),
+      dotSize * 1.5,
+      Paint()
+        ..color      = _kCyan.withValues(alpha: 0.18)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+    );
+    // White dot core
+    canvas.drawCircle(
+      Offset(dotX, dotY),
+      dotSize,
+      Paint()..color = _kWhite,
+    );
+
+    // ── 3. Ghost micro-dot — 7 o'clock (orbital balance) ────────
+    const ghostAngle = math.pi / 2 + math.pi / 6; // 7 o'clock
+    final ghostR  = r * 0.75;
+    final ghostX  = cx + ghostR * math.cos(ghostAngle);
+    final ghostY  = cy + ghostR * math.sin(ghostAngle);
+    final ghostSz = w * 0.045;
+
+    canvas.drawCircle(
+      Offset(ghostX, ghostY),
+      ghostSz,
+      Paint()..color = _kCyan.withValues(alpha: 0.45),
+    );
   }
 
   @override
-  bool shouldRepaint(_AiSparkPainter old) => old.color != color;
+  bool shouldRepaint(covariant CustomPainter old) => false;
 }

@@ -67,6 +67,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^4.0.0
   build_runner: ^2.4.11
+  flutter_launcher_icons: ^0.14.3
 
 dependency_overrides:
   path_provider_foundation: 2.5.1
@@ -77,3 +78,4 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+    - assets/icon/

@@ -4,19 +4,12 @@ class ApiConstants {
   // Passed via --dart-define=SUPABASE_FUNCTIONS_URL=...
   static const String baseUrl = String.fromEnvironment(
     'SUPABASE_FUNCTIONS_URL',
-    defaultValue: 'https://jegpotribejwrclaiygy.supabase.co/functions/v1',
+    defaultValue: 'http://localhost:54321/functions/v1',
   );
 
-  // Supabase — falls back to production values if dart-define not passed.
-  // The anon key is a public client credential (security is enforced by RLS).
-  static const String supabaseUrl = String.fromEnvironment(
-    'SUPABASE_URL',
-    defaultValue: 'https://jegpotribejwrclaiygy.supabase.co',
-  );
-  static const String supabaseAnonKey = String.fromEnvironment(
-    'SUPABASE_ANON_KEY',
-    defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImplZ3BvdHJpYmVqd3JjbGFpeWd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3MDY1NDIsImV4cCI6MjA5NTI4MjU0Mn0.hwg_U3XCjOObW2pt4mHW_4cHn4jB3IZKU873ReMPb6E',
-  );
+  // Supabase (required — passed via GitHub Secrets in CI, or --dart-define locally)
+  static const String supabaseUrl     = String.fromEnvironment('SUPABASE_URL');
+  static const String supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
   // Analytics (optional)
   static const String posthogKey = String.fromEnvironment('POSTHOG_KEY', defaultValue: '');

@@ -1,0 +1,26 @@
+flutter_launcher_icons:
+  # ── Android ───────────────────────────────────────────────────
+  android: "launcher_icon"
+  min_sdk_android: 21
+  image_path: "assets/icon/app_icon.png"
+
+  # Adaptive icon (Android 8.0+):
+  #   foreground = the logo mark, background = deep void black
+  adaptive_icon_background: "#060C1A"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
+
+  # ── iOS ── disabled (ios folder renamed to _ios_bak) ──────────
+  ios: false
+
+  # ── Web ───────────────────────────────────────────────────────
+  web:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    background_color: "#060C1A"
+    theme_color: "#7B2FFE"
+
+  # Windows / macOS not needed
+  windows:
+    generate: false
+  macos:
+    generate: false

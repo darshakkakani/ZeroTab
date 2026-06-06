@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/zt_logo.dart';
+import '../../../shared/widgets/zerotab_logo.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -151,10 +152,10 @@ class _SplashScreenState extends State<SplashScreen>
                                   ],
                                 ),
                               ),
-                              // Logo tile
-                              ZTLogo(
-                                size: 80,
-                                style: ZTLogoStyle.gradient,
+                              // Logo tile — Escape Orbit brand mark
+                              const ZeroTabLogo(
+                                size: 88,
+                                showBackground: true,
                               ),
                             ],
                           ),

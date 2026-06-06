@@ -275,30 +275,49 @@ class _AiChatFab extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 50,
-        height: 50,
+        width: 52,
+        height: 52,
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF00C4A8), Color(0xFF006B5C)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+          // Deep dark radial shell — near-black violet core fading to dark navy
+          gradient: const RadialGradient(
+            center: Alignment(-0.2, -0.3),
+            radius: 1.0,
+            colors: [
+              Color(0xFF1C0A4A), // deep violet center
+              Color(0xFF070D1F), // near-black navy edge
+            ],
           ),
           shape: BoxShape.circle,
+          // Subtle gradient border ring
+          border: Border.all(
+            color: const Color(0xFF7B2FFE),
+            width: 1.0,
+          ),
           boxShadow: [
-            BoxShadow(
-              color: AppColors.teal.withOpacity(0.35),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
+            // Outer violet glow
+            const BoxShadow(
+              color: Color(0x4D7B2FFE), // violet 30%
+              blurRadius: 18,
+              spreadRadius: 0,
+              offset: Offset(0, 4),
             ),
-            BoxShadow(
-              color: Colors.black.withOpacity(0.18),
+            // Inner cyan halo
+            const BoxShadow(
+              color: Color(0x3300CFDE), // cyan 20%
               blurRadius: 8,
-              offset: const Offset(0, 2),
+              spreadRadius: 0,
+              offset: Offset(0, 0),
+            ),
+            // Base shadow for depth
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.40),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
         alignment: Alignment.center,
-        child: const AiBrainIcon(size: 22),
+        child: const AiBrainIcon(size: 28),
       ),
     );
   }
