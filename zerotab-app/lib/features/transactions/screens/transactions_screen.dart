@@ -711,9 +711,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               },
             )),
 
-            SliverToBoxAdapter(child: const SizedBox(height: 8)),
+            SliverToBoxAdapter(child: const SizedBox(height: 10)),
 
-            // ── Budget Envelopes (YNAB) ──────────────────
+            // ── Smart Tools — 4 compact tappable cards ───
+            // Envelopes | Splits | Subscriptions | Habits
+            // Each opens a bottom sheet — keeps main view compact
             SliverToBoxAdapter(child: txnAsync.when(
               loading: () => const SizedBox.shrink(),
               error:   (_, __) => const SizedBox.shrink(),
@@ -721,63 +723,18 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                 final txns = (data['data'] as List? ?? [])
                     .map((e) => TransactionModel.fromJson(e as Map<String, dynamic>))
                     .toList();
+                final habits = _detectHabits(txns.where((t) => t.isDebit).toList());
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: EnvelopeBudgets(txns: txns),
-                );
-              },
-            )),
-
-            SliverToBoxAdapter(child: const SizedBox(height: 8)),
-
-            // ── Split ledger (Splitwise-style) ────────────
-            const SliverToBoxAdapter(child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: SplitLedger(),
-            )),
-
-            SliverToBoxAdapter(child: const SizedBox(height: 8)),
-
-            // ── Subscription Radar ────────────────────────
-            SliverToBoxAdapter(child: txnAsync.when(
-              loading: () => const SizedBox.shrink(),
-              error:   (_, __) => const SizedBox.shrink(),
-              data:    (data) {
-                final txns = (data['data'] as List? ?? [])
-                    .map((e) => TransactionModel.fromJson(e as Map<String, dynamic>))
-                    .toList();
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: SubscriptionRadar(allTxns: txns),
-                );
-              },
-            )),
-
-            SliverToBoxAdapter(child: const SizedBox(height: 8)),
-
-            // ── Money habits (merchant patterns) ─────────
-            SliverToBoxAdapter(child: txnAsync.when(
-              loading: () => const SizedBox.shrink(),
-              error:   (_, __) => const SizedBox.shrink(),
-              data:    (data) {
-                final txns = (data['data'] as List? ?? [])
-                    .map((e) => TransactionModel.fromJson(e as Map<String, dynamic>))
-                    .where((t) => t.isDebit)
-                    .toList();
-                final habits = _detectHabits(txns);
-                if (habits.isEmpty) return const SizedBox.shrink();
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: MoneyHabitsStrip(
+                  child: _SmartToolsGrid(
+                    txns:   txns,
                     habits: habits,
-                    expanded: _habitsExpanded,
-                    onToggle: () => setState(() => _habitsExpanded = !_habitsExpanded),
                   ),
                 );
               },
             )),
 
-            SliverToBoxAdapter(child: const SizedBox(height: 8)),
+            SliverToBoxAdapter(child: const SizedBox(height: 10)),
 
             // ── Search bar ───────────────────────────────
             SliverToBoxAdapter(child: Padding(
@@ -1655,4 +1612,181 @@ class _EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Smart Tools Grid — 4 compact tiles that open bottom sheets
+//  Keeps the Spend page minimal; full detail on tap
+// ════════════════════════════════════════════════════════════════
+
+class _SmartToolsGrid extends StatelessWidget {
+  final List<TransactionModel> txns;
+  final List<SpendHabit>       habits;
+  const _SmartToolsGrid({required this.txns, required this.habits});
+
+  @override
+  Widget build(BuildContext context) {
+    // Compute quick summaries for the tiles
+    final debitTxns = txns.where((t) => t.isDebit).toList();
+    final emiSpent  = debitTxns.where((t) => t.category == 'emi').fold(0.0, (s, t) => s + t.amount);
+
+    // Count splits stored locally
+    final splitCount = 0; // real count loaded inside SplitLedger
+
+    // Top habit
+    final topHabit = habits.isNotEmpty ? habits.first : null;
+
+    // Subscription count (quick estimate from category)
+    final subCount = debitTxns.where((t) => t.category == 'subscriptions').length;
+
+    final tiles = [
+      _ToolTile(
+        icon: Icons.pie_chart_outline_rounded,
+        color: const Color(0xFF7B2FFE),
+        label: 'Budgets',
+        sublabel: 'YNAB envelopes',
+        onTap: () => _openSheet(context, 'Budget Envelopes',
+            EnvelopeBudgets(txns: txns)),
+      ),
+      _ToolTile(
+        icon: Icons.people_outline_rounded,
+        color: const Color(0xFF22C55E),
+        label: 'Splits',
+        sublabel: 'Track who owes',
+        onTap: () => _openSheet(context, 'Splits & Balances',
+            const SplitLedger()),
+      ),
+      _ToolTile(
+        icon: Icons.repeat_rounded,
+        color: const Color(0xFF00CFDE),
+        label: 'Recurring',
+        sublabel: subCount > 0 ? '$subCount detected' : 'Auto-detect',
+        onTap: () => _openSheet(context, 'Subscription Radar',
+            SubscriptionRadar(allTxns: txns)),
+      ),
+      _ToolTile(
+        icon: Icons.local_fire_department_outlined,
+        color: const Color(0xFFF59E0B),
+        label: 'Habits',
+        sublabel: topHabit != null
+            ? '${topHabit.name}: ${formatInr(topHabit.total, compact: true)}'
+            : 'Spending patterns',
+        onTap: habits.isEmpty ? null : () => _openSheet(context, 'Money Habits',
+            _HabitsDetail(habits: habits)),
+      ),
+    ];
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('SMART TOOLS',
+        style: TextStyle(fontFamily: 'DMSans', fontSize: 10,
+            fontWeight: FontWeight.w600, letterSpacing: 0.4,
+            color: AppColors.text3)),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(child: tiles[0]),
+        const SizedBox(width: 8),
+        Expanded(child: tiles[1]),
+      ]),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(child: tiles[2]),
+        const SizedBox(width: 8),
+        Expanded(child: tiles[3]),
+      ]),
+    ]);
+  }
+
+  void _openSheet(BuildContext context, String title, Widget content) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        builder: (_, ctrl) => Container(
+          decoration: const BoxDecoration(
+            color: AppColors.bg2,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(children: [
+            // Handle + title
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+              child: Row(children: [
+                Expanded(child: Text(title,
+                  style: const TextStyle(fontFamily: 'DMSans', fontSize: 16,
+                      fontWeight: FontWeight.w700, color: AppColors.text))),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: const Icon(Icons.close_rounded, color: AppColors.text2, size: 20)),
+              ]),
+            ),
+            const Divider(color: AppColors.border, height: 1),
+            Expanded(child: SingleChildScrollView(
+              controller: ctrl,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              child: content,
+            )),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _ToolTile extends StatelessWidget {
+  final IconData icon;
+  final Color    color;
+  final String   label, sublabel;
+  final VoidCallback? onTap;
+  const _ToolTile({required this.icon, required this.color,
+      required this.label, required this.sublabel, this.onTap});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.20)),
+      ),
+      child: Row(children: [
+        Container(
+          width: 34, height: 34,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.13),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          alignment: Alignment.center,
+          child: Icon(icon, color: color, size: 18),
+        ),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: TextStyle(fontFamily: 'DMSans', fontSize: 12,
+              fontWeight: FontWeight.w700, color: color)),
+          Text(sublabel, style: const TextStyle(fontFamily: 'DMSans',
+              fontSize: 9.5, color: AppColors.text3),
+            maxLines: 1, overflow: TextOverflow.ellipsis),
+        ])),
+        Icon(Icons.chevron_right_rounded, size: 14,
+            color: color.withValues(alpha: 0.50)),
+      ]),
+    ),
+  );
+}
+
+class _HabitsDetail extends StatelessWidget {
+  final List<SpendHabit> habits;
+  const _HabitsDetail({required this.habits});
+
+  @override
+  Widget build(BuildContext context) => MoneyHabitsStrip(
+    habits:   habits,
+    expanded: true,
+    onToggle: () {},
+  );
 }

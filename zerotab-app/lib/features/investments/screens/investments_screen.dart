@@ -230,10 +230,24 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final stocks      = ref.watch(stockHoldingsProvider).value ?? [];
-    final mf          = (ref.watch(mfHoldingsProvider).value ?? []).where((h) => h.isMF).toList();
-    final etfs        = ref.watch(etfHoldingsProvider).value ?? [];
-    final commodities = ref.watch(commodityHoldingsProvider).value ?? [];
+    final stocksAsync = ref.watch(stockHoldingsProvider);
+    final mfAsync     = ref.watch(mfHoldingsProvider);
+    final etfsAsync   = ref.watch(etfHoldingsProvider);
+    final commAsync   = ref.watch(commodityHoldingsProvider);
+
+    // Show loading if any primary provider is still fetching
+    if (stocksAsync.isLoading || mfAsync.isLoading) {
+      return Scaffold(
+        backgroundColor: AppColors.bg,
+        body: const Center(
+          child: CircularProgressIndicator(color: AppColors.accent, strokeWidth: 1.5)),
+      );
+    }
+
+    final stocks      = stocksAsync.value ?? [];
+    final mf          = (mfAsync.value ?? []).where((h) => h.isMF).toList();
+    final etfs        = etfsAsync.value ?? [];
+    final commodities = commAsync.value ?? [];
 
     final allItems    = [...stocks, ...mf, ...etfs, ...commodities];
     final totalValue    = allItems.fold(0.0, (s,h) => s + (h.currentValue ?? 0));
