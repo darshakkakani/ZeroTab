@@ -53,8 +53,12 @@ dependencies:
   # WebView - for Finvu AA consent
   webview_flutter: ^4.7.0
 
-  # File picker - for CAS PDF upload
+  # File picker - for bank statement PDF upload
   file_picker: ^8.0.3
+
+  # PDF text extraction — handles ALL bank PDF formats (FlateDecode, LZW, etc.)
+  # Community license: free for revenue < $1M / team < 5 devs
+  syncfusion_flutter_pdf: ^27.1.54
 
   # Misc
   url_launcher: ^6.3.0

@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'habits_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -254,7 +255,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   _TimePeriod  _period        = _TimePeriod.month;
   bool         _recategorizing = false;
   bool         _importing      = false;
-  bool         _habitsExpanded = true;
+  final bool _habitsExpanded = true;
 
   static const _chips = [
     ('All',           null),
@@ -386,28 +387,49 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         return;
       }
 
-      // POST to /import-pdf (Edge Function deployed as 'import-pdf')
+      // 2. Extract text CLIENT-SIDE using Syncfusion (handles FlateDecode, LZW, etc.)
+      // This is the key fix: no base64 encoding, no server decompression needed
+      _showPremiumSnackBar(context, 'Extracting transactions…', success: true);
+      final String extractedText;
+      try {
+        extractedText = await _extractTextWithSyncfusion(bytes);
+      } catch (e) {
+        if (mounted) _showPremiumSnackBar(context, 'PDF read error: $e', success: false);
+        return;
+      }
+
+      if (extractedText.trim().length < 50) {
+        if (mounted) _showImportComingSoon(context, file.name);
+        return;
+      }
+
+      // 3. Send extracted TEXT to Edge Function (simple, no binary transfer)
       try {
         final res = await api.post(ApiConstants.importPdf, data: {
-          'file_name': file.name,
-          'file_bytes_b64': _bytesToBase64(bytes),
+          'extracted_text': extractedText,
+          'file_name':      file.name,
         });
-        final imported = (res.data as Map?)?['imported'] as int? ?? 0;
+        final resMap   = res.data as Map? ?? {};
+        final imported = resMap['imported'] as int? ?? 0;
+        final skipped  = resMap['skipped']  as int? ?? 0;
+        final debugRows = (resMap['debug_rows'] as List?)?.cast<String>() ?? [];
+
         ref.invalidate(transactionsProvider);
         ref.invalidate(financialSummaryProvider);
         ref.invalidate(snapshotProvider);
-        if (mounted) {
+
+        if (!mounted) return;
+        if (imported > 0) {
           _showPremiumSnackBar(context,
-              imported > 0
-                  ? 'Imported $imported transactions from ${file.name}'
-                  : 'No new transactions found in statement',
-              success: imported > 0);
+              '$imported transactions imported from ${file.name}', success: true);
+        } else if (skipped > 0) {
+          _showPremiumSnackBar(context,
+              'All $skipped transactions already in ZeroTab', success: true);
+        } else {
+          _showImportDebug(context, file.name, debugRows, extractedText);
         }
       } catch (e) {
-        // Edge function not yet built — show helpful message
-        if (mounted) {
-          _showImportComingSoon(context, file.name);
-        }
+        if (mounted) _showPremiumSnackBar(context, 'Upload failed: $e', success: false);
       }
     } catch (e) {
       if (mounted) {
@@ -418,20 +440,107 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     }
   }
 
-  /// Simple base64 encoder (no external package needed)
-  String _bytesToBase64(List<int> bytes) {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-    final buf = StringBuffer();
-    for (var i = 0; i < bytes.length; i += 3) {
-      final b0 = bytes[i];
-      final b1 = i + 1 < bytes.length ? bytes[i + 1] : 0;
-      final b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
-      buf.write(chars[(b0 >> 2) & 0x3F]);
-      buf.write(chars[((b0 << 4) | (b1 >> 4)) & 0x3F]);
-      buf.write(i + 1 < bytes.length ? chars[((b1 << 2) | (b2 >> 6)) & 0x3F] : '=');
-      buf.write(i + 2 < bytes.length ? chars[b2 & 0x3F] : '=');
+  /// Extracts text from PDF using Syncfusion's position-aware extractor.
+  ///
+  /// Uses X/Y glyph coordinates to reconstruct multi-column table rows —
+  /// this is what makes it work for ANY bank statement layout:
+  ///   HDFC, SBI, ICICI, Axis, Standard Chartered, RBL, BOB, Kotak…
+  ///
+  /// Each transaction row is reconstructed as a single line:
+  ///   "16 Jun 19 ATM WITHDRAWAL AT ANNANAGAR 1,500.00 112,953.65"
+  Future<String> _extractTextWithSyncfusion(List<int> bytes) async {
+    final doc       = PdfDocument(inputBytes: bytes);
+    final extractor = PdfTextExtractor(doc);
+    final sb        = StringBuffer();
+
+    try {
+      for (int pageIdx = 0; pageIdx < doc.pages.count; pageIdx++) {
+        final lines = extractor.extractTextLines(
+            startPageIndex: pageIdx, endPageIndex: pageIdx);
+
+        // Group all words by their Y-position bucket (4-point tolerance)
+        final Map<int, List<TextWord>> rowMap = {};
+        for (final line in lines) {
+          for (final word in line.wordCollection) {
+            final yKey = (word.bounds.top / 4).round();
+            rowMap.putIfAbsent(yKey, () => []).add(word);
+          }
+        }
+
+        // Sort rows top→bottom, words left→right → reconstruct each table row
+        final ys = rowMap.keys.toList()..sort();
+        for (final y in ys) {
+          final words = rowMap[y]!
+            ..sort((a, b) => a.bounds.left.compareTo(b.bounds.left));
+          final row = words.map((w) => w.text).join(' ').trim();
+          if (row.isNotEmpty) sb.writeln(row);
+        }
+
+        if (pageIdx < doc.pages.count - 1) sb.writeln('--- PAGE ---');
+      }
+    } finally {
+      doc.dispose();
     }
-    return buf.toString();
+
+    return sb.toString();
+  }
+
+  void _showImportDebug(BuildContext ctx, String fileName, List<String> rows, [String raw = '']) {
+    showModalBottomSheet(
+      context: ctx,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppColors.bg2,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.border2),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('PDF Extracted — No Transactions Parsed',
+            style: const TextStyle(fontFamily: 'DMSans', fontSize: 14,
+                fontWeight: FontWeight.w700, color: AppColors.text)),
+          const SizedBox(height: 8),
+          Text('From: $fileName', style: const TextStyle(
+              fontFamily: 'DMSans', fontSize: 11, color: AppColors.text3)),
+          const SizedBox(height: 12),
+          Container(
+            height: 200,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: AppColors.bg3,
+                borderRadius: BorderRadius.circular(10)),
+            child: SingleChildScrollView(
+              child: Text(
+                rows.isEmpty ? 'No text extracted from PDF.\nThis may be a scanned image PDF.'
+                    : rows.join('\n'),
+                style: const TextStyle(fontFamily: 'DMMono', fontSize: 9.5,
+                    color: AppColors.text2, height: 1.4)),
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'Ensure you are uploading a DIGITAL bank statement (not a scanned image). '
+            'Download directly from your net banking portal.',
+            style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
+                color: AppColors.text3, height: 1.4)),
+          const SizedBox(height: 14),
+          GestureDetector(
+            onTap: () => Navigator.pop(ctx),
+            child: Container(
+              width: double.infinity, height: 44,
+              decoration: BoxDecoration(
+                color: AppColors.bg3, borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border)),
+              alignment: Alignment.center,
+              child: const Text('OK', style: TextStyle(fontFamily: 'DMSans',
+                  fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.text2)),
+            ),
+          ),
+        ]),
+      ),
+    );
   }
 
   void _showImportComingSoon(BuildContext context, String fileName) {
@@ -1628,11 +1737,6 @@ class _SmartToolsGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     // Compute quick summaries for the tiles
     final debitTxns = txns.where((t) => t.isDebit).toList();
-    final emiSpent  = debitTxns.where((t) => t.category == 'emi').fold(0.0, (s, t) => s + t.amount);
-
-    // Count splits stored locally
-    final splitCount = 0; // real count loaded inside SplitLedger
-
     // Top habit
     final topHabit = habits.isNotEmpty ? habits.first : null;
 
