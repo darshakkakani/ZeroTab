@@ -113,25 +113,32 @@ Financial archetype: ${archetype}
 
 Generate this week's insight.`;
 
-  // Call Google Gemini API (free tier: 1.5M tokens/day)
-  const geminiKey = Deno.env.get("GEMINI_API_KEY");
-  if (!geminiKey) throw new Error("GEMINI_API_KEY not set");
+  // Call AI via OpenRouter (DeepSeek V4 Flash — fast & free)
+  const apiKey = Deno.env.get("OPENROUTER_KEY");
+  if (!apiKey) throw new Error("OPENROUTER_KEY not set");
 
-  const geminiRes = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ parts: [{ text: userPrompt }] }],
-        generationConfig: { maxOutputTokens: 350, temperature: 0.7 },
-      }),
-    }
-  );
+  const model = Deno.env.get("OPENROUTER_MODEL") ?? "deepseek/deepseek-v4-flash";
+  const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://zerotab.app",
+      "X-Title": "ZeroTab AI Insights",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      max_tokens: 350,
+      temperature: 0.7,
+    }),
+  });
 
-  const geminiData = await geminiRes.json();
-  const insightText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "Unable to generate insight this week.";
+  const aiData = await aiRes.json();
+  const insightText = aiData?.choices?.[0]?.message?.content?.trim() ?? "Unable to generate insight this week.";
 
   const actionLines = insightText.split("\n").filter((l: string) => l.trim().startsWith("•"));
   const actionItems = actionLines.map((l: string, i: number) => ({

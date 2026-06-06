@@ -14,6 +14,8 @@ import '../../features/debt/screens/debt_tracker_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
 import '../../features/home/screens/insight_detail_screen.dart';
 import '../../features/home/screens/health_score_screen.dart';
+import '../../features/chat/screens/chat_screen.dart';
+import '../../features/chat/screens/chat_hub_screen.dart';
 import '../../shared/widgets/main_scaffold.dart';
 import '../../shared/services/providers.dart';
 
@@ -113,6 +115,26 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/health',
             pageBuilder: (_, s) => _fade(s, const HealthScoreScreen()),
+          ),
+          GoRoute(
+            path: '/chat',
+            pageBuilder: (_, s) => _fade(s, const ChatHubScreen()),
+            routes: [
+              GoRoute(
+                path: 'new',
+                pageBuilder: (_, s) {
+                  final query = s.uri.queryParameters['q'];
+                  return _fade(s, ChatScreen(initialQuery: query));
+                },
+              ),
+              GoRoute(
+                path: 'session/:sessionId',
+                pageBuilder: (_, s) => _fade(
+                  s,
+                  ChatScreen(sessionId: s.pathParameters['sessionId']),
+                ),
+              ),
+            ],
           ),
         ],
       ),

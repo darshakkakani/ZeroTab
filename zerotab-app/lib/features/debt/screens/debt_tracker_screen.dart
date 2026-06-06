@@ -19,20 +19,20 @@ class _UniformFAB extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 56,
-        height: 56,
+        width: 50,
+        height: 50,
         decoration: BoxDecoration(
           color: const Color(0xFFF0ECFF),
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
               color: const Color(0xFF7B5FFF).withOpacity(0.28),
-              blurRadius: 22,
-              offset: const Offset(0, 7),
+              blurRadius: 18,
+              offset: const Offset(0, 5),
             ),
             BoxShadow(
               color: Colors.black.withOpacity(0.16),
-              blurRadius: 10,
+              blurRadius: 8,
               offset: const Offset(0, 3),
             ),
           ],
@@ -41,7 +41,7 @@ class _UniformFAB extends StatelessWidget {
         child: const Icon(
           Icons.add_rounded,
           color: Color(0xFF2A1A6E),
-          size: 28,
+          size: 24,
         ),
       ),
     );
@@ -88,7 +88,9 @@ double _calculateEmi(double principal, double annualRate, int months) {
   return principal * r * math.pow(1 + r, n) / (math.pow(1 + r, n) - 1);
 }
 
-/// Returns a month-by-month amortization schedule
+/// Returns a month-by-month amortization schedule.
+/// Balance is rounded to 2 decimal places (paise) each period to prevent
+/// floating-point residuals from adding a phantom near-zero final row.
 List<Map<String, double>> _buildSchedule(double outstanding, double annualRate, int remainingMonths) {
   final schedule = <Map<String, double>>[];
   if (remainingMonths <= 0 || outstanding <= 0) return schedule;
@@ -97,10 +99,18 @@ List<Map<String, double>> _buildSchedule(double outstanding, double annualRate, 
   for (int m = 1; m <= remainingMonths && balance > 0.01; m++) {
     final interest  = annualRate > 0 ? balance * (annualRate / 12 / 100) : 0.0;
     final principal = math.min(emi - interest, balance);
-    balance -= principal;
-    schedule.add({'month': m.toDouble(), 'principal': principal, 'interest': interest, 'balance': math.max(balance, 0)});
+    balance = ((balance - principal) * 100).roundToDouble() / 100; // paise precision
+    balance = math.max(balance, 0);
+    schedule.add({'month': m.toDouble(), 'principal': principal, 'interest': interest, 'balance': balance});
   }
   return schedule;
+}
+
+/// Compute whole calendar months elapsed between two dates.
+/// Uses proper year/month arithmetic — inDays÷30 undercounts February months.
+int _calendarMonthsElapsed(DateTime start, DateTime end) {
+  final months = (end.year - start.year) * 12 + (end.month - start.month);
+  return months.clamp(0, 1200);
 }
 
 /// Loan type detection from loan_name string
@@ -246,7 +256,10 @@ class _DebtTrackerScreenState extends ConsumerState<DebtTrackerScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      floatingActionButton: _UniformFAB(onTap: _showAddChooser),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 60),
+        child: _UniformFAB(onTap: _showAddChooser),
+      ),
       body: SafeArea(
         child: accountsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator(color: AppColors.accent, strokeWidth: 1.5)),
@@ -264,11 +277,18 @@ class _DebtTrackerScreenState extends ConsumerState<DebtTrackerScreen> {
             final monthlyIncome = snap?.monthlyIncome ?? 0;
             final estimatedEmi = monthlyIncome * emiRatio;
 
-            // Avg interest rate across manual loans
+            // Balance-weighted average interest rate across manual loans.
+            // Simple (unweighted) mean is misleading when loan balances differ significantly.
             double avgRate = 0;
             final ratedLoans = loans.where((a) => (a.interestRate ?? 0) > 0).toList();
             if (ratedLoans.isNotEmpty) {
-              avgRate = ratedLoans.fold(0.0, (s, a) => s + (a.interestRate ?? 0)) / ratedLoans.length;
+              final totalBalance = ratedLoans.fold(0.0, (s, a) => s + (a.currentBalance?.abs() ?? 0));
+              if (totalBalance > 0) {
+                avgRate = ratedLoans.fold(0.0, (s, a) =>
+                    s + (a.interestRate ?? 0) * (a.currentBalance?.abs() ?? 0)) / totalBalance;
+              } else {
+                avgRate = ratedLoans.fold(0.0, (s, a) => s + (a.interestRate ?? 0)) / ratedLoans.length;
+              }
             }
 
             return RefreshIndicator(
@@ -903,7 +923,7 @@ class _LoanCard extends StatelessWidget {
                     if (monthlyEmi != null)
                       _MiniStat('EMI / mo', formatInr(monthlyEmi, compact: true), AppColors.teal),
                     if (remainingInfo != null)
-                      _MiniStat('Remaining', remainingInfo!, AppColors.text2),
+                      _MiniStat('Remaining', remainingInfo, AppColors.text2),
                     if (originalPrincipal > 0)
                       _MiniStat('Original', formatInr(originalPrincipal, compact: true), AppColors.text3),
                   ],
@@ -1017,7 +1037,7 @@ class _AmortizationSheetState extends State<_AmortizationSheet> {
     if (startDateStr != null) {
       final start = DateTime.tryParse(startDateStr);
       if (start != null) {
-        final elapsed = DateTime.now().difference(start).inDays ~/ 30;
+        final elapsed = _calendarMonthsElapsed(start, DateTime.now());
         remainingMonths = (tenor - elapsed).clamp(0, tenor);
       }
     }
@@ -1204,7 +1224,7 @@ class _PrepaySheetState extends State<_PrepaySheet> {
     if (startDateStr != null) {
       final start = DateTime.tryParse(startDateStr);
       if (start != null) {
-        final elapsed = DateTime.now().difference(start).inDays ~/ 30;
+        final elapsed = _calendarMonthsElapsed(start, DateTime.now());
         remainingMonths = (tenor - elapsed).clamp(0, tenor);
       }
     }
@@ -1243,9 +1263,10 @@ class _PrepaySheetState extends State<_PrepaySheet> {
     int newMonths = newSchedule.length;
 
     if (extraMonthly && extraPerMonth > 0) {
-      // Iterative simulation with extra monthly payment
-      double balance = outstanding;
-      final emi = _calculateEmi(outstanding, rate, months) + extraPerMonth;
+      // Iterative simulation: start from the lump-sum-reduced principal,
+      // not the original outstanding (Bug fix: previous code ignored lump sum).
+      double balance = principal;
+      final emi = _calculateEmi(principal, rate, months) + extraPerMonth;
       totalInterest = 0;
       newMonths = 0;
       while (balance > 0.01 && newMonths < months) {
@@ -2038,12 +2059,24 @@ class _AddCreditCardSheetState extends State<_AddCreditCardSheet> {
     super.dispose();
   }
 
-  /// Compute next due date from billing day + due days
+  /// Clamp a day to the last valid day of the given month.
+  /// e.g. day=31 in April (30 days) → 30. Prevents Dart from rolling over.
+  int _clampDayToMonth(int year, int month, int day) {
+    final lastDay = DateTime(year, month + 1, 0).day;
+    return day.clamp(1, lastDay);
+  }
+
+  /// Compute next due date from billing day + due days.
+  /// Billing day is clamped to the valid range of the target month so that
+  /// _billingDay=31 in April doesn't silently shift to May 1.
   DateTime _nextDueDate() {
     final now = DateTime.now();
-    var billing = DateTime(now.year, now.month, _billingDay);
-    if (billing.isBefore(now)) {
-      billing = DateTime(now.year, now.month + 1, _billingDay);
+    final thisDay = _clampDayToMonth(now.year, now.month, _billingDay);
+    var billing = DateTime(now.year, now.month, thisDay);
+    if (!billing.isAfter(now)) {
+      final nextMonth = now.month == 12 ? 1  : now.month + 1;
+      final nextYear  = now.month == 12 ? now.year + 1 : now.year;
+      billing = DateTime(nextYear, nextMonth, _clampDayToMonth(nextYear, nextMonth, _billingDay));
     }
     return billing.add(Duration(days: _dueDays));
   }

@@ -199,6 +199,21 @@ final commodityHoldingsProvider = FutureProvider<List<MFHoldingModel>>((ref) asy
   } catch (_) { return []; }
 });
 
+// ── AI Insights feed (all recent insights) ───────────────
+
+final insightsFeedProvider = FutureProvider<List<AIInsightModel>>((ref) async {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) return [];
+  try {
+    final res = await api.get(ApiConstants.insights);
+    return (res.data as List)
+        .map((e) => AIInsightModel.fromJson(e as Map<String, dynamic>))
+        .toList();
+  } catch (_) {
+    return [];
+  }
+});
+
 // ── User profile ──────────────────────────────────────────
 
 final userProfileProvider = FutureProvider<UserModel?>((ref) async {

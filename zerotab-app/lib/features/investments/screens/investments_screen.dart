@@ -247,7 +247,10 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      floatingActionButton: _UniformFAB(onTap: _showAdd),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 60),
+        child: _UniformFAB(onTap: _showAdd),
+      ),
       body: SafeArea(
         child: Column(children: [
           // ── Header ──────────────────────────────────────────
@@ -412,20 +415,20 @@ class _UniformFAB extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 56,
-        height: 56,
+        width: 50,
+        height: 50,
         decoration: BoxDecoration(
           color: const Color(0xFFF0ECFF),
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
               color: const Color(0xFF7B5FFF).withOpacity(0.28),
-              blurRadius: 22,
-              offset: const Offset(0, 7),
+              blurRadius: 18,
+              offset: const Offset(0, 5),
             ),
             BoxShadow(
               color: Colors.black.withOpacity(0.16),
-              blurRadius: 10,
+              blurRadius: 8,
               offset: const Offset(0, 3),
             ),
           ],
@@ -434,7 +437,7 @@ class _UniformFAB extends StatelessWidget {
         child: const Icon(
           Icons.add_rounded,
           color: Color(0xFF2A1A6E),
-          size: 28,
+          size: 24,
         ),
       ),
     );

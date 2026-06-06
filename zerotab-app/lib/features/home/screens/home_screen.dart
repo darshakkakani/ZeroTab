@@ -11,6 +11,7 @@ import '../../../shared/services/api_service.dart';
 import '../../../shared/models/models.dart';
 import '../widgets/sparkline_chart.dart';
 import '../widgets/insight_card.dart';
+import '../../../shared/widgets/ai_brain_icon.dart';
 
 // ── Orange warning colour (AppColors.amber == AppColors.gold → alias bug) ──
 const _kOrange = Color(0xFFFF8C42);
@@ -35,7 +36,7 @@ class HomeScreen extends ConsumerWidget {
     final authEmail  = currentUser?.email ?? '';
     final displayName = isDefault
         ? (authEmail.isNotEmpty ? authEmail.split('@').first : 'Welcome back')
-        : rawName!;
+        : rawName;
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -147,10 +148,10 @@ class HomeScreen extends ConsumerWidget {
                   ),
                 ),
 
-                // ── Week's AI Insight — coming soon ─────────────────────
-                const SliverPadding(
-                  padding: EdgeInsets.fromLTRB(20, 12, 20, 0),
-                  sliver: SliverToBoxAdapter(child: _AiInsightComingSoon()),
+                // ── Ask AI CFO — quick entry ──────────────────────────────
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  sliver: SliverToBoxAdapter(child: _AskAiCard()),
                 ),
 
                 // ── Cash Flow Shortcut ──────────────────────────────────
@@ -224,90 +225,7 @@ class _HomeHeader extends StatelessWidget {
   }
 
   void _showNotificationSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-        decoration: BoxDecoration(
-          color: AppColors.bg2,
-          borderRadius: BorderRadius.circular(AppRadius.xxl),
-          border: Border.all(color: AppColors.border2),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Center(
-              child: Container(
-                width: 36, height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border2,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 28),
-            Container(
-              width: 64, height: 64,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF7B5FFF), Color(0xFF5A3FCC)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(AppRadius.lg),
-              ),
-              alignment: Alignment.center,
-              child: const Icon(
-                Icons.notifications_outlined,
-                color: Colors.white,
-                size: 28,
-              ),
-            ),
-            const SizedBox(height: 18),
-            const Text(
-              'Notifications',
-              style: TextStyle(
-                fontFamily: 'DMSans',
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.text,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Coming soon! Smart alerts for EMI due dates,\nunusual spends & portfolio milestones.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: 'DMSans',
-                fontSize: 13,
-                color: AppColors.text2,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppColors.accentSoft,
-                borderRadius: BorderRadius.circular(AppRadius.pill),
-                border: Border.all(color: AppColors.accent.withOpacity(0.3)),
-              ),
-              child: const Text(
-                '🔔  We\'ll notify you when this is ready',
-                style: TextStyle(
-                  fontFamily: 'DMSans',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: AppColors.accent2,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    context.go('/chat');
   }
 
   @override
@@ -2003,72 +1921,78 @@ class _HomeIconPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter _) => false;
 }
 
-// ── Week's AI Insight — Coming Soon card ──────────────────────────────────
+// ── Ask AI CFO card ──────────────────────────────────────────────────────
 
-class _AiInsightComingSoon extends StatelessWidget {
-  const _AiInsightComingSoon();
-
+class _AskAiCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0D1520), Color(0xFF0A0F1A)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(AppRadius.xl),
-        border: Border.all(color: AppColors.teal.withOpacity(0.18)),
-      ),
-      child: Row(children: [
-        Container(
-          width: 42, height: 42,
-          decoration: BoxDecoration(
-            color: AppColors.teal.withOpacity(0.10),
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            border: Border.all(color: AppColors.teal.withOpacity(0.2)),
+    return GestureDetector(
+      onTap: () => context.go('/chat'),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF0D1520), Color(0xFF0A0F1A)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-          alignment: Alignment.center,
-          child: const Icon(Icons.psychology_outlined, color: AppColors.teal, size: 22),
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+          border: Border.all(color: AppColors.teal.withOpacity(0.18)),
         ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                const Text(
-                  "Week's AI Insight",
-                  style: TextStyle(
-                    fontFamily: 'DMSans', fontSize: 14,
-                    fontWeight: FontWeight.w600, color: AppColors.text),
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: AppColors.teal.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(AppRadius.pill),
-                    border: Border.all(color: AppColors.teal.withOpacity(0.3)),
-                  ),
-                  child: const Text('Coming Soon', style: TextStyle(
-                    fontFamily: 'DMSans', fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.teal)),
-                ),
-              ]),
-              const SizedBox(height: 4),
-              const Text(
-                'Personalized portfolio analysis & rebalancing suggestions from your AI CFO.',
-                style: TextStyle(
-                  fontFamily: 'DMSans', fontSize: 11,
-                  color: AppColors.text3, height: 1.4),
+        child: Row(children: [
+          Container(
+            width: 42, height: 42,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF00C4A8), Color(0xFF006B5C)],
               ),
-            ],
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+            alignment: Alignment.center,
+            child: const AiBrainIcon(size: 22),
           ),
-        ),
-      ]),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  const Text(
+                    'Ask your AI CFO',
+                    style: TextStyle(
+                      fontFamily: 'DMSans', fontSize: 14,
+                      fontWeight: FontWeight.w600, color: AppColors.text),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: AppColors.teal.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
+                      border: Border.all(color: AppColors.teal.withOpacity(0.3)),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: const [
+                      Text('Chat', style: TextStyle(
+                        fontFamily: 'DMSans', fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.teal)),
+                      SizedBox(width: 3),
+                      Icon(Icons.arrow_forward_rounded, size: 10, color: AppColors.teal),
+                    ]),
+                  ),
+                ]),
+                const SizedBox(height: 4),
+                const Text(
+                  'Tax planning, investment advice, spending analysis — powered by your real data.',
+                  style: TextStyle(
+                    fontFamily: 'DMSans', fontSize: 11,
+                    color: AppColors.text3, height: 1.4),
+                ),
+              ],
+            ),
+          ),
+        ]),
+      ),
     );
   }
 }

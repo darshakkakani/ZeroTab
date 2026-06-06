@@ -47,23 +47,33 @@ async function generateInsightForUser(userId: string) {
   const archetype = userRow?.financial_archetype ?? "BALANCED_WEALTH_BUILDER";
   const archetypeHint = ARCHETYPE_CONTEXT[archetype] ?? ARCHETYPE_CONTEXT.BALANCED_WEALTH_BUILDER;
 
-  const geminiKey = Deno.env.get("GEMINI_API_KEY");
-  if (!geminiKey) { console.error("GEMINI_API_KEY not set"); return; }
+  const apiKey = Deno.env.get("OPENROUTER_KEY");
+  if (!apiKey) { console.error("OPENROUTER_KEY not set"); return; }
 
-  const geminiRes = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: `You are a personal CFO for an Indian user. Give ONE specific financial insight. Format: 3-4 sentences + 2 action items with "•". Use their real numbers. Under 280 words. ${archetypeHint}` }] },
-        contents: [{ parts: [{ text: `Net worth: ${(bankBalance + mfValue).toLocaleString("en-IN")}, Monthly income: ${monthlyIncome.toLocaleString("en-IN")}, Monthly spend: ${monthlySpend.toLocaleString("en-IN")}, Savings rate: ${(savingsRate * 100).toFixed(0)}%, MF value: ${mfValue.toLocaleString("en-IN")}, Bank balance: ${bankBalance.toLocaleString("en-IN")}. Generate insight.` }] }],
-        generationConfig: { maxOutputTokens: 350, temperature: 0.7 },
-      }),
-    }
-  );
-  const geminiData = await geminiRes.json();
-  const insightText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "Unable to generate insight.";
+  const model = Deno.env.get("OPENROUTER_MODEL") ?? "deepseek/deepseek-v4-flash";
+  const systemMsg = `You are a personal CFO for an Indian user. Give ONE specific financial insight. Format: 3-4 sentences + 2 action items with "•". Use their real numbers. Under 280 words. ${archetypeHint}`;
+  const userMsg = `Net worth: ${(bankBalance + mfValue).toLocaleString("en-IN")}, Monthly income: ${monthlyIncome.toLocaleString("en-IN")}, Monthly spend: ${monthlySpend.toLocaleString("en-IN")}, Savings rate: ${(savingsRate * 100).toFixed(0)}%, MF value: ${mfValue.toLocaleString("en-IN")}, Bank balance: ${bankBalance.toLocaleString("en-IN")}. Generate insight.`;
+
+  const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://zerotab.app",
+      "X-Title": "ZeroTab Cron Insights",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: systemMsg },
+        { role: "user", content: userMsg },
+      ],
+      max_tokens: 350,
+      temperature: 0.7,
+    }),
+  });
+  const aiData = await aiRes.json();
+  const insightText = aiData?.choices?.[0]?.message?.content?.trim() ?? "Unable to generate insight.";
 
   const actionLines = insightText.split("\n").filter((l: string) => l.trim().startsWith("•"));
   const actionItems = actionLines.map((l: string, i: number) => ({ step: i + 1, text: l.replace(/^[•\-]\s*/, "").trim() }));

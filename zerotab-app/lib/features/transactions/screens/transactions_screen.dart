@@ -178,20 +178,20 @@ class _UniformFAB extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 56,
-        height: 56,
+        width: 50,
+        height: 50,
         decoration: BoxDecoration(
           color: const Color(0xFFF0ECFF),
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
               color: const Color(0xFF7B5FFF).withOpacity(0.28),
-              blurRadius: 22,
-              offset: const Offset(0, 7),
+              blurRadius: 18,
+              offset: const Offset(0, 5),
             ),
             BoxShadow(
               color: Colors.black.withOpacity(0.16),
-              blurRadius: 10,
+              blurRadius: 8,
               offset: const Offset(0, 3),
             ),
           ],
@@ -200,7 +200,7 @@ class _UniformFAB extends StatelessWidget {
         child: const Icon(
           Icons.add_rounded,
           color: Color(0xFF2A1A6E),
-          size: 28,
+          size: 24,
         ),
       ),
     );
@@ -248,7 +248,6 @@ class TransactionsScreen extends ConsumerStatefulWidget {
 
 class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   final _searchCtrl = TextEditingController();
-  String?      _filterCat;
   String       _filterLabel = 'All';
   _TimePeriod  _period      = _TimePeriod.month;
   bool         _recategorizing = false;
@@ -288,10 +287,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   }
 
   void _applyCategory(String? cat, String label) {
-    setState(() {
-      _filterCat   = cat;
-      _filterLabel = label;
-    });
+    setState(() => _filterLabel = label);
     ref.read(transactionParamsProvider.notifier).update(
         (s) => cat == null ? s.copyWith(clearCategory: true) : s.copyWith(category: cat));
   }
@@ -443,7 +439,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      floatingActionButton: _UniformFAB(onTap: _showAddSheet),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 60),
+        child: _UniformFAB(onTap: _showAddSheet),
+      ),
       body: SafeArea(
         child: Column(
           children: [

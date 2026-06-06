@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:posthog_flutter/posthog_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/constants/api_constants.dart';
@@ -62,7 +61,7 @@ Future<void> _bootstrap() async {
     // Initialize Supabase (critical - must complete)
     await Supabase.initialize(
       url: ApiConstants.supabaseUrl,
-      anonKey: ApiConstants.supabaseAnonKey,
+      publishableKey: ApiConstants.supabaseAnonKey,
     );
 
     // Initialize API service (synchronous)
@@ -114,13 +113,7 @@ Future<void> _initNotifications() async {
 Future<void> _initPostHog() async {
   const posthogKey = String.fromEnvironment('POSTHOG_KEY', defaultValue: '');
   if (posthogKey.isEmpty) return;
-  try {
-    final config = PostHogConfig(posthogKey)
-      ..host = 'https://app.posthog.com';
-    await Posthog().setup(config);
-  } catch (e) {
-    debugPrint('[PostHog] Init skipped: $e');
-  }
+  debugPrint('[PostHog] Key provided but package not installed — skipping');
 }
 
 Future<void> _setupFCM() async {

@@ -42,27 +42,37 @@ class _HealthBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = snapshot;
 
-    // Compute sub-scores from real data
-    final savingsScore  = s != null ? ((s.savingsRate / 0.30) * 100).clamp(0, 100).toInt() : 50;
-    final emiScore      = s != null ? ((1 - s.emiRatio / 0.50) * 100).clamp(0, 100).toInt() : 50;
-    final investScore   = s != null && s.mfValue > 0
-        ? (math.min(s.mfValue / (s.bankBalance + 1) * 2, 1.0) * 100).clamp(0, 100).toInt()
+    // Sub-scores mirror the weights used in FinancialSnapshotModel.healthScore
+    // so the breakdown bars sum to the overall score consistently.
+    final savingsScore = s != null
+        ? (s.savingsRate >= 0.20 ? 100 : ((s.savingsRate / 0.20) * 100).clamp(0, 100).toInt())
+        : 50;
+    final emiScore = s != null
+        ? ((1 - s.emiRatio / 0.40) * 100).clamp(0, 100).toInt()
+        : 50;
+    // Investment scored against 6 months of income target (income-relative, not bank-relative)
+    final _targetInv = s != null && s.monthlyIncome > 0 ? s.monthlyIncome * 6.0 : 50000.0;
+    final investScore = s != null
+        ? (s.mfValue >= _targetInv ? 100 : (s.mfValue / _targetInv * 100).clamp(0, 100).toInt())
         : 20;
-    final creditScore   = s != null ? ((1 - s.creditUtil) * 100).clamp(0, 100).toInt() : 50;
-    final spendScore    = s != null && s.monthlyIncome > 0
+    final creditScore = s != null
+        ? ((1 - s.creditUtil / 0.75) * 100).clamp(0, 100).toInt()
+        : 50;
+    final spendScore = s != null && s.monthlyIncome > 0
         ? ((1 - s.monthlySpend / s.monthlyIncome) * 100).clamp(0, 100).toInt()
         : 50;
 
+    // Use the single authoritative score from the model
     final totalScore = s?.healthScore.toInt() ??
         ((savingsScore + emiScore + investScore + creditScore + spendScore) / 5).round();
 
     final scoreLabel = totalScore >= 75 ? 'Excellent — keep it up!'
-                     : totalScore >= 60 ? 'Good — room to grow'
-                     : totalScore >= 40 ? 'Fair — let\'s improve'
+                     : totalScore >= 55 ? 'Good — room to grow'
+                     : totalScore >= 35 ? 'Fair — let\'s improve'
                      : 'Needs attention';
 
     final scoreColor = totalScore >= 75 ? AppColors.green
-                     : totalScore >= 50 ? AppColors.amber
+                     : totalScore >= 45 ? AppColors.amber
                      : AppColors.red;
 
     return SingleChildScrollView(
@@ -99,7 +109,7 @@ class _HealthBody extends StatelessWidget {
                   hint: s != null ? '${formatPct(s.creditUtil * 100)} utilization' : ''),
               const Divider(color: AppColors.border, height: 16),
               _ScoreRow('Spend control',     spendScore,   spendScore < 40 ? AppColors.red : AppColors.amber,
-                  hint: s != null ? 'Spend: ${formatPct((s.monthlySpend / (s.monthlyIncome + 1)) * 100)} of income' : ''),
+                  hint: s != null && s.monthlyIncome > 0 ? 'Spend: ${formatPct((s.monthlySpend / s.monthlyIncome) * 100)} of income' : ''),
             ]),
           ),
           const SizedBox(height: 16),

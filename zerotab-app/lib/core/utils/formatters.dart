@@ -1,11 +1,14 @@
 import 'package:intl/intl.dart';
 
 /// Formats a number as Indian rupee currency: ₹18,43,720
+/// Negative compact amounts correctly render -₹1.5Cr (sign before symbol).
 String formatInr(num amount, {bool compact = false}) {
   if (compact) {
-    if (amount.abs() >= 10000000) return '₹${(amount / 10000000).toStringAsFixed(1)}Cr';
-    if (amount.abs() >= 100000)   return '₹${(amount / 100000).toStringAsFixed(1)}L';
-    if (amount.abs() >= 1000)     return '₹${(amount / 1000).toStringAsFixed(1)}K';
+    final sign = amount < 0 ? '-' : '';
+    final abs  = amount.abs();
+    if (abs >= 10000000) return '${sign}₹${(abs / 10000000).toStringAsFixed(1)}Cr';
+    if (abs >= 100000)   return '${sign}₹${(abs / 100000).toStringAsFixed(1)}L';
+    if (abs >= 1000)     return '${sign}₹${(abs / 1000).toStringAsFixed(1)}K';
   }
   final formatter = NumberFormat.currency(
     locale: 'en_IN',

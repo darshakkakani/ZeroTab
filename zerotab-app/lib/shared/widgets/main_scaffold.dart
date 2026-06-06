@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
+import 'ai_brain_icon.dart';
 
 class MainScaffold extends StatelessWidget {
   final Widget child;
@@ -19,8 +20,21 @@ class MainScaffold extends StatelessWidget {
     final location     = GoRouterState.of(context).matchedLocation;
     final currentIndex = _tabs.indexWhere((t) => location.startsWith(t.route));
 
+    final isOnChat = location.startsWith('/chat');
+
     return Scaffold(
-      body: child,
+      body: Stack(
+        children: [
+          child,
+          // ── AI chat FAB — bottom-right on ALL pages (except chat) ──
+          if (!isOnChat)
+            Positioned(
+              bottom: 16,
+              right: 16,
+              child: _AiChatFab(onTap: () => context.go('/chat')),
+            ),
+        ],
+      ),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: Color(0xF4121020),
@@ -248,4 +262,44 @@ class _NavIconPainter extends CustomPainter {
   @override
   bool shouldRepaint(_NavIconPainter old) =>
       old.active != active || old.index != index;
+}
+
+// ── AI Chat FAB — bottom-right on all pages ──────────────────────
+
+class _AiChatFab extends StatelessWidget {
+  final VoidCallback onTap;
+  const _AiChatFab({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 50,
+        height: 50,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF00C4A8), Color(0xFF006B5C)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.teal.withOpacity(0.35),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: const AiBrainIcon(size: 22),
+      ),
+    );
+  }
 }

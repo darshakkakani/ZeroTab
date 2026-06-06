@@ -200,6 +200,10 @@ class AIInsightModel {
   final List<ActionItem> actionItems;
   final FinancialSnapshotModel? dataSnapshot;
   final DateTime generatedAt;
+  final String priority;
+  final bool isRead;
+  final bool isDismissed;
+  final String triggerType;
 
   const AIInsightModel({
     required this.id,
@@ -212,7 +216,14 @@ class AIInsightModel {
     this.actionItems = const [],
     this.dataSnapshot,
     required this.generatedAt,
+    this.priority = 'informational',
+    this.isRead = false,
+    this.isDismissed = false,
+    this.triggerType = 'scheduled',
   });
+
+  bool get isUrgent      => priority == 'urgent';
+  bool get isActionable  => priority == 'actionable';
 
   factory AIInsightModel.fromJson(Map<String, dynamic> j) {
     final rawItems = j['action_items'];
@@ -238,6 +249,10 @@ class AIInsightModel {
       actionItems:  items,
       dataSnapshot: snapshot,
       generatedAt:  DateTime.parse(j['generated_at'] as String),
+      priority:     j['priority'] as String? ?? 'informational',
+      isRead:       j['is_read'] as bool? ?? false,
+      isDismissed:  j['is_dismissed'] as bool? ?? false,
+      triggerType:  j['trigger_type'] as String? ?? 'scheduled',
     );
   }
 }
@@ -301,18 +316,94 @@ class FinancialSnapshotModel {
     loanOutstanding: (j['loanOutstanding'] as num?)?.toDouble() ?? 0,
   );
 
+  /// Financial health score 0–100.
+  /// Uses continuous piecewise-linear scoring so small changes don't cause
+  /// cliff jumps, and poor finances can now score below 50 (down to ~10).
+  ///
+  /// Weights: Savings(25) + EMI burden(25) + Credit health(20) + Investment(15) + Spend control(15)
   double get healthScore {
-    double score = 50;
-    if (savingsRate > 0.20) score += 15;
-    else if (savingsRate > 0.10) score += 7;
-    if (emiRatio < 0.20) score += 12;
-    else if (emiRatio < 0.35) score += 6;
-    if (creditUtil < 0.30) score += 12;
-    else if (creditUtil < 0.50) score += 6;
-    if (mfValue > 50000) score += 11;
-    else if (mfValue > 10000) score += 5;
-    return score.clamp(0, 100);
+    // ── Savings rate: 0 → 0 pts, 10% → 12.5, 20%+ → 25 pts ─────
+    final savingsContrib = savingsRate >= 0.20
+        ? 25.0
+        : savingsRate > 0
+            ? (savingsRate / 0.20) * 25
+            : 0.0;
+
+    // ── EMI ratio: 0% → 25 pts, 40% → 0 pts (lower = better) ────
+    final emiContrib = ((1 - emiRatio / 0.40) * 25).clamp(0.0, 25.0);
+
+    // ── Credit utilisation: 0% → 20 pts, 75% → 0 pts ─────────────
+    final creditContrib = ((1 - creditUtil / 0.75) * 20).clamp(0.0, 20.0);
+
+    // ── Investment: scored against 6 months income target ─────────
+    final targetInv = monthlyIncome > 0 ? monthlyIncome * 6.0 : 50000.0;
+    final investContrib = mfValue >= targetInv
+        ? 15.0
+        : (mfValue / targetInv * 15).clamp(0.0, 15.0);
+
+    // ── Spend control: 0% spend → 15 pts, 100% → 0 pts ───────────
+    final spendContrib = monthlyIncome > 0
+        ? ((1 - monthlySpend / monthlyIncome) * 15).clamp(0.0, 15.0)
+        : 7.5;
+
+    return (savingsContrib + emiContrib + creditContrib + investContrib + spendContrib)
+        .clamp(0.0, 100.0);
   }
+}
+
+// ── Chat models ──────────────────────────────────────────
+
+class ChatSession {
+  final String id;
+  final String userId;
+  final String title;
+  final DateTime createdAt;
+  final DateTime lastMessageAt;
+  final bool isActive;
+
+  const ChatSession({
+    required this.id,
+    required this.userId,
+    required this.title,
+    required this.createdAt,
+    required this.lastMessageAt,
+    this.isActive = true,
+  });
+
+  factory ChatSession.fromJson(Map<String, dynamic> j) => ChatSession(
+    id:            j['id'] as String,
+    userId:        j['user_id'] as String,
+    title:         j['title'] as String? ?? 'New conversation',
+    createdAt:     DateTime.parse(j['created_at'] as String),
+    lastMessageAt: DateTime.parse(j['last_message_at'] as String),
+    isActive:      j['is_active'] as bool? ?? true,
+  );
+}
+
+class ChatMessage {
+  final String? id;
+  final String role;
+  final String content;
+  final DateTime createdAt;
+  final bool isLoading;
+
+  const ChatMessage({
+    this.id,
+    required this.role,
+    required this.content,
+    required this.createdAt,
+    this.isLoading = false,
+  });
+
+  factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
+    id:        j['id'] as String?,
+    role:      j['role'] as String,
+    content:   j['content'] as String,
+    createdAt: DateTime.parse(j['created_at'] as String),
+  );
+
+  bool get isUser      => role == 'user';
+  bool get isAssistant => role == 'assistant';
 }
 
 class FinancialSummary {

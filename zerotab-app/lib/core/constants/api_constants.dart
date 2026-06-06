@@ -59,4 +59,10 @@ class ApiConstants {
 
   // Accounts
   static const String accountAdjustBalance = '/accounts';
+
+  // AI Chat
+  static const String aiChatMessage   = '/ai-chat/message';
+  static const String aiChatQuick     = '/ai-chat/quick';
+  static const String aiChatSessions  = '/ai-chat/sessions';
+  static const String aiChatHistory   = '/ai-chat/history';
 }
