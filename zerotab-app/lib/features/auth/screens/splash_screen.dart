@@ -1,11 +1,22 @@
 import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../shared/widgets/zt_logo.dart';
 import '../../../shared/widgets/zerotab_logo.dart';
+
+// ════════════════════════════════════════════════════════════════
+//  ZeroTab Splash — "Escape from Zero" story animation
+//
+//  THE STORY:
+//   1. DARKNESS       — empty void (the financial unknown)
+//   2. RING FORMS     — the Zero, the debt trap, forms around you
+//   3. Z AWAKENS      — you appear at the center
+//   4. THE BURDEN     — ring pulses/constricts (debt pressing in)
+//   5. THE RUN        — your wealth dot races along the ring
+//   6. THE ESCAPE     — dot BURSTS through the gap — FREEDOM
+//   7. SETTLE         — logo lands in final state, name reveals
+// ════════════════════════════════════════════════════════════════
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -16,66 +27,128 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
-  // Main logo entrance
-  late AnimationController _logoCtrl;
-  late Animation<double>    _logoScale;
-  late Animation<double>    _logoFade;
 
-  // Tagline reveal — delayed after logo settles
-  late AnimationController _taglineCtrl;
-  late Animation<double>    _taglineFade;
+  // ── Animation controllers (one per story beat) ───────────────
+  late AnimationController _ringCtrl;    // ring draws in
+  late AnimationController _zCtrl;       // Z appears
+  late AnimationController _pulseCtrl;   // ring constricts (burden)
+  late AnimationController _dotCtrl;     // dot travels + escapes
+  late AnimationController _burstCtrl;   // escape flash
+  late AnimationController _flyCtrl;     // dot floats free
+  late AnimationController _nameCtrl;    // brand name + tagline
 
-  // Radial ring pulse expanding outward from logo
-  late AnimationController _ringCtrl;
-  late Animation<double>    _ringScale;
-  late Animation<double>    _ringFade;
+  // Animated values
+  late Animation<double> _ringDraw;
+  late Animation<double> _ringPulse;
+  late Animation<double> _zScale;
+  late Animation<double> _zFade;
+  late Animation<double> _dotTravel;
+  late Animation<double> _burstGlow;
+  late Animation<double> _flyProgress;
+  late Animation<double> _nameFade;
+  late Animation<double> _taglineFade;
+  late Animation<Offset> _nameSlide;
 
   @override
   void initState() {
     super.initState();
-
-    // Logo: spring scale 0.82 → 1.0 over 420ms
-    _logoCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 420),
-    );
-    _logoScale = Tween<double>(begin: 0.82, end: 1.0).animate(
-      CurvedAnimation(parent: _logoCtrl, curve: Curves.easeOutBack),
-    );
-    _logoFade = CurvedAnimation(parent: _logoCtrl, curve: Curves.easeOut);
-
-    // Ring: starts at logo settle, expands outward
-    _ringCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-    );
-    _ringScale = Tween<double>(begin: 0.0, end: 2.4).animate(
-      CurvedAnimation(parent: _ringCtrl, curve: Curves.easeOut),
-    );
-    _ringFade = Tween<double>(begin: 0.5, end: 0.0).animate(
-      CurvedAnimation(parent: _ringCtrl, curve: Curves.easeOut),
-    );
-
-    // Tagline: fades in 200ms after logo settles
-    _taglineCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 260),
-    );
-    _taglineFade = CurvedAnimation(parent: _taglineCtrl, curve: Curves.easeOut);
-
-    // Choreography
-    _logoCtrl.forward().then((_) {
-      _ringCtrl.forward();
-      _taglineCtrl.forward();
-    });
-
+    _buildAnimations();
+    _runStory();
     _navigate();
   }
 
+  void _buildAnimations() {
+    // Ring draws: 500ms
+    _ringCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 520));
+    _ringDraw = CurvedAnimation(parent: _ringCtrl, curve: Curves.easeOut);
+
+    // Z appears: 350ms spring
+    _zCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 350));
+    _zScale = Tween<double>(begin: 0.55, end: 1.0).animate(
+        CurvedAnimation(parent: _zCtrl, curve: Curves.easeOutBack));
+    _zFade = CurvedAnimation(parent: _zCtrl, curve: Curves.easeIn);
+
+    // Ring pulse — burden (300ms, repeat 1.5x then settle)
+    _pulseCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 380));
+    _ringPulse = TweenSequence([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.028), weight: 40),
+      TweenSequenceItem(tween: Tween(begin: 1.028, end: 0.985), weight: 30),
+      TweenSequenceItem(tween: Tween(begin: 0.985, end: 1.0), weight: 30),
+    ]).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
+
+    // Dot travels along ring (700ms, ease-in = acceleration)
+    _dotCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 700));
+    _dotTravel =
+        CurvedAnimation(parent: _dotCtrl, curve: Curves.easeInCubic);
+
+    // Burst at escape point (280ms)
+    _burstCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 280));
+    _burstGlow = TweenSequence([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 35),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 65),
+    ]).animate(CurvedAnimation(parent: _burstCtrl, curve: Curves.easeOut));
+
+    // Dot flies free (500ms)
+    _flyCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 500));
+    _flyProgress =
+        CurvedAnimation(parent: _flyCtrl, curve: Curves.easeOutCubic);
+
+    // Name + tagline reveal (450ms)
+    _nameCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 450));
+    _nameFade    = CurvedAnimation(parent: _nameCtrl, curve: Curves.easeOut);
+    _taglineFade = CurvedAnimation(
+        parent: _nameCtrl,
+        curve: const Interval(0.4, 1.0, curve: Curves.easeOut));
+    _nameSlide = Tween<Offset>(
+            begin: const Offset(0, 0.25), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _nameCtrl, curve: Curves.easeOut));
+  }
+
+  // ── Choreography ─────────────────────────────────────────────
+  Future<void> _runStory() async {
+    // Phase 1: Darkness (300ms pause)
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
+
+    // Phase 2: Ring forms
+    _ringCtrl.forward();
+    await Future.delayed(const Duration(milliseconds: 440));
+    if (!mounted) return;
+
+    // Phase 3: Z awakens
+    _zCtrl.forward();
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+
+    // Phase 4: The burden (ring pulses)
+    _pulseCtrl.forward();
+    await Future.delayed(const Duration(milliseconds: 520));
+    if (!mounted) return;
+
+    // Phase 5: The run — dot races around ring
+    _dotCtrl.forward();
+    await Future.delayed(const Duration(milliseconds: 580));
+    if (!mounted) return;
+
+    // Phase 6: Burst + fly free (dot exits the ring)
+    _burstCtrl.forward();
+    _flyCtrl.forward();
+    await Future.delayed(const Duration(milliseconds: 180));
+    if (!mounted) return;
+
+    // Phase 7: Brand name reveals
+    _nameCtrl.forward();
+  }
+
   Future<void> _navigate() async {
-    // 200ms — just enough for the logo animation to breathe.
-    // The GoRouter redirect handles auth check; splash just kicks it off.
-    await Future.delayed(const Duration(milliseconds: 200));
+    await Future.delayed(const Duration(milliseconds: 2600));
     if (!mounted) return;
     final session = Supabase.instance.client.auth.currentSession;
     context.go(session != null ? '/home' : '/onboard');
@@ -83,108 +156,80 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
-    _logoCtrl.dispose();
     _ringCtrl.dispose();
-    _taglineCtrl.dispose();
+    _zCtrl.dispose();
+    _pulseCtrl.dispose();
+    _dotCtrl.dispose();
+    _burstCtrl.dispose();
+    _flyCtrl.dispose();
+    _nameCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bgVoid,
+      backgroundColor: kZtVoidBlack,
       body: Stack(
         children: [
-          // ── Subtle geometric mesh lines (background texture) ──
+          // Subtle mesh background
           Positioned.fill(child: _MeshLines()),
 
-          // ── Main content ──
           Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Logo mark with ring pulse
+                // ── Animated logo ─────────────────────────────
                 SizedBox(
-                  width: 160, height: 160,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // Ring expanding outward
-                      AnimatedBuilder(
-                        animation: _ringCtrl,
-                        builder: (_, __) => Opacity(
-                          opacity: _ringFade.value,
-                          child: Transform.scale(
-                            scale: _ringScale.value,
-                            child: Container(
-                              width: 80, height: 80,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: AppColors.accent,
-                                  width: 0.5,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
+                  width: 200, height: 200,
+                  child: AnimatedBuilder(
+                    animation: Listenable.merge([
+                      _ringCtrl, _zCtrl, _pulseCtrl,
+                      _dotCtrl, _burstCtrl, _flyCtrl,
+                    ]),
+                    builder: (_, __) => CustomPaint(
+                      painter: _StoryPainter(
+                        ringDraw:    _ringDraw.value,
+                        ringPulse:   _ringCtrl.isAnimating ||
+                                     _ringCtrl.isCompleted
+                            ? _ringPulse.value : 1.0,
+                        zScale:     _zCtrl.isAnimating || _zCtrl.isCompleted
+                            ? _zScale.value : 0.0,
+                        zFade:      _zCtrl.isAnimating || _zCtrl.isCompleted
+                            ? _zFade.value : 0.0,
+                        dotTravel:  _dotTravel.value,
+                        dotActive:  _dotCtrl.isAnimating || _dotCtrl.isCompleted,
+                        burstGlow:  _burstGlow.value,
+                        flyProgress: _flyProgress.value,
+                        flyActive:  _flyCtrl.isAnimating || _flyCtrl.isCompleted,
                       ),
-                      // Logo mark — ZTLogo geometric Z
-                      FadeTransition(
-                        opacity: _logoFade,
-                        child: ScaleTransition(
-                          scale: _logoScale,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              // Outer glow halo
-                              Container(
-                                width: 96, height: 96,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(28),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.accent.withOpacity(0.45),
-                                      blurRadius: 52,
-                                      spreadRadius: 4,
-                                      offset: const Offset(0, 18),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              // Logo tile — Escape Orbit brand mark
-                              const ZeroTabLogo(
-                                size: 88,
-                                showBackground: true,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // Brand name
-                FadeTransition(
-                  opacity: _logoFade,
-                  child: const Text(
-                    'ZeroTab',
-                    style: TextStyle(
-                      fontFamily: 'DMSans',
-                      fontSize: 26,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -1.0,
-                      color: AppColors.text,
                     ),
                   ),
                 ),
 
-                const SizedBox(height: 10),
+                const SizedBox(height: 28),
 
-                // Tagline — delayed fade
+                // ── Brand name ────────────────────────────────
+                FadeTransition(
+                  opacity: _nameFade,
+                  child: SlideTransition(
+                    position: _nameSlide,
+                    child: const Text(
+                      'ZeroTab',
+                      style: TextStyle(
+                        fontFamily: 'DMSans',
+                        fontSize: 30,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -1.2,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // ── Tagline ───────────────────────────────────
                 FadeTransition(
                   opacity: _taglineFade,
                   child: const Text(
@@ -193,7 +238,7 @@ class _SplashScreenState extends State<SplashScreen>
                       fontFamily: 'DMSans',
                       fontSize: 10,
                       fontWeight: FontWeight.w500,
-                      letterSpacing: 1.8,
+                      letterSpacing: 2.0,
                       color: AppColors.text3,
                     ),
                   ),
@@ -202,19 +247,15 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
 
-          // ── Version string — bottom right, DM Mono ──
+          // Version
           Positioned(
             bottom: 32, right: 24,
             child: FadeTransition(
-              opacity: _taglineFade,
-              child: const Text(
-                'v1.0.0',
-                style: TextStyle(
-                  fontFamily: 'DMMono',
-                  fontSize: 11,
-                  color: AppColors.text3,
-                ),
-              ),
+              opacity: _nameFade,
+              child: const Text('v1.0.0',
+                  style: TextStyle(
+                      fontFamily: 'DMMono', fontSize: 11,
+                      color: AppColors.text3)),
             ),
           ),
         ],
@@ -223,46 +264,189 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
-// ── Subtle mesh line background ───────────────────────────
+// ════════════════════════════════════════════════════════════════
+//  Story Painter — draws each frame of the escape animation
+// ════════════════════════════════════════════════════════════════
+
+class _StoryPainter extends CustomPainter {
+  final double ringDraw;
+  final double ringPulse;
+  final double zScale;
+  final double zFade;
+  final double dotTravel;
+  final bool   dotActive;
+  final double burstGlow;
+  final double flyProgress;
+  final bool   flyActive;
+
+  const _StoryPainter({
+    required this.ringDraw,
+    required this.ringPulse,
+    required this.zScale,
+    required this.zFade,
+    required this.dotTravel,
+    required this.dotActive,
+    required this.burstGlow,
+    required this.flyProgress,
+    required this.flyActive,
+  });
+
+  // Dot travels from ghost (7 o'clock) clockwise to escape (11 o'clock)
+  static const _ghostAngle  = math.pi / 2 + math.pi / 4.2;  // 7 o'clock
+  static const _escapeAngle = ZeroTabLogoPainter.escapeAngle; // 11 o'clock
+  // Clockwise: increase angle (add 2π to escape so it's > ghost)
+  static const _escapeFull  = _escapeAngle + math.pi * 2;    // same point, +360°
+  static const _travelSweep = _escapeFull - _ghostAngle;     // ~104° clockwise
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final cx = w / 2, cy = h / 2;
+    final ringR = w * 0.350;
+
+    // ── 1. Ring (forms progressively) ───────────────────────────
+    canvas.save();
+    canvas.translate(cx, cy);
+    canvas.scale(ringPulse, ringPulse);
+    canvas.translate(-cx, -cy);
+
+    ZeroTabLogoPainter.drawRing(canvas, cx, cy, ringR, w,
+        progress: ringDraw);
+
+    canvas.restore();
+
+    // ── 2. Ghost dot at 7 o'clock (before dot starts moving) ────
+    if (ringDraw > 0.8 && !dotActive) {
+      ZeroTabLogoPainter.drawGhostDot(canvas, cx, cy, ringR, w,
+          alpha: ((ringDraw - 0.8) / 0.2).clamp(0.0, 0.35));
+    }
+
+    // ── 3. Z appears (spring scale + fade) ──────────────────────
+    ZeroTabLogoPainter.drawZ(canvas, cx, cy, w,
+        opacity: zFade, scale: zScale);
+
+    // ── 4. Travelling dot ────────────────────────────────────────
+    if (dotActive && dotTravel < 1.0) {
+      final angle = _ghostAngle + _travelSweep * dotTravel;
+      final dotR  = w * 0.048 + w * 0.012 * dotTravel; // grows as it accelerates
+
+      // Speed trail — 5 ghost dots behind current position
+      for (int i = 1; i <= 5; i++) {
+        final trailT = (dotTravel - i * 0.04).clamp(0.0, 1.0);
+        final trailAngle = _ghostAngle + _travelSweep * trailT;
+        final trailAlpha = (1 - i * 0.18) * dotTravel;
+        final trailR     = dotR * (1 - i * 0.12);
+        if (trailAlpha > 0) {
+          canvas.drawCircle(
+            Offset(cx + ringR * 0.93 * math.cos(trailAngle),
+                   cy + ringR * 0.93 * math.sin(trailAngle)),
+            trailR.clamp(1.0, dotR),
+            Paint()
+              ..color      = kZtCyan.withValues(alpha: trailAlpha * 0.35)
+              ..maskFilter = MaskFilter.blur(
+                  BlurStyle.normal, 3 + i.toDouble()),
+          );
+        }
+      }
+
+      ZeroTabLogoPainter.drawDotOnRing(
+          canvas, cx, cy, ringR, w,
+          angle: angle, glowRadius: dotR, alpha: 1.0);
+    }
+
+    // ── 5. Burst flash at escape point ───────────────────────────
+    if (burstGlow > 0) {
+      final ex = cx + ringR * 0.93 * math.cos(_escapeAngle);
+      final ey = cy + ringR * 0.93 * math.sin(_escapeAngle);
+
+      // Shockwave ring expanding outward
+      canvas.drawCircle(
+        Offset(ex, ey),
+        w * 0.08 + w * 0.18 * burstGlow,
+        Paint()
+          ..color      = kZtCyan.withValues(alpha: burstGlow * 0.30)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8)
+          ..style      = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
+      // Core white flash
+      canvas.drawCircle(
+        Offset(ex, ey),
+        w * 0.055 + w * 0.04 * burstGlow,
+        Paint()
+          ..color      = Colors.white.withValues(alpha: burstGlow * 0.90)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 6 * burstGlow),
+      );
+    }
+
+    // ── 6. Escaped dot floating upward ────────────────────────────
+    if (flyActive && flyProgress > 0) {
+      final ex = cx + ringR * 0.93 * math.cos(_escapeAngle);
+      final ey = cy + ringR * 0.93 * math.sin(_escapeAngle);
+
+      // Dot floats up and slightly right, fading out
+      final flyX = ex + w * 0.08 * flyProgress;
+      final flyY = ey - w * 0.22 * flyProgress;
+      final alpha = (1.0 - flyProgress * 0.85).clamp(0.0, 1.0);
+      final dotR  = w * 0.055 * (1.0 - flyProgress * 0.4);
+
+      canvas.drawCircle(Offset(flyX, flyY), dotR * 2.0,
+          Paint()
+            ..color      = kZtCyan.withValues(alpha: alpha * 0.20)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6));
+      canvas.drawCircle(Offset(flyX, flyY), dotR,
+          Paint()..color = Colors.white.withValues(alpha: alpha));
+
+      // Show static dot at escape gap once dot has flown away
+      if (flyProgress > 0.5) {
+        final settled = ((flyProgress - 0.5) / 0.5).clamp(0.0, 1.0);
+        ZeroTabLogoPainter.drawDotOnRing(
+            canvas, cx, cy, ringR, w,
+            angle: _escapeAngle,
+            glowRadius: w * 0.048,
+            alpha: settled * 0.85);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _StoryPainter old) => true;
+}
+
+// ── Subtle mesh lines background ─────────────────────────────────
 
 class _MeshLines extends StatelessWidget {
   @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _MeshPainter(),
-    );
-  }
+  Widget build(BuildContext context) =>
+      CustomPaint(painter: _MeshPainter());
 }
 
 class _MeshPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0x087B5FFF)
+    final p = Paint()
+      ..color       = const Color(0x067B5FFF)
       ..strokeWidth = 0.5
-      ..style = PaintingStyle.stroke;
+      ..style       = PaintingStyle.stroke;
 
-    final cx = size.width / 2;
-    final cy = size.height / 2;
+    final cx = size.width / 2, cy = size.height / 2;
 
-    // 6 radiating lines from center
-    const angles = [0.0, 60.0, 120.0, 180.0, 240.0, 300.0];
-    for (final deg in angles) {
+    for (final deg in [0.0, 60.0, 120.0, 180.0, 240.0, 300.0]) {
       final rad = deg * math.pi / 180;
-      final dx = cx + size.width * 0.65 * math.cos(rad);
-      final dy = cy + size.height * 0.65 * math.sin(rad);
-      canvas.drawLine(Offset(cx, cy), Offset(dx, dy), paint);
+      canvas.drawLine(
+        Offset(cx, cy),
+        Offset(cx + size.width  * 0.65 * math.cos(rad),
+               cy + size.height * 0.65 * math.sin(rad)),
+        p,
+      );
     }
 
-    // Concentric subtle rings
     for (final r in [80.0, 160.0, 260.0]) {
-      canvas.drawCircle(
-        Offset(cx, cy), r,
-        paint..color = const Color(0x057B5FFF),
-      );
+      canvas.drawCircle(Offset(cx, cy), r,
+          p..color = const Color(0x047B5FFF));
     }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant CustomPainter old) => false;
 }
