@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
@@ -274,7 +275,11 @@ class _HomeHeader extends StatelessWidget {
   }
 
   void _showNotificationSheet(BuildContext context) {
-    context.go('/chat');
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _NotificationSheet(),
+    );
   }
 
   @override
@@ -419,7 +424,7 @@ class _NetWorthCardState extends State<_NetWorthCard>
     final total  = banks + invest + cards + loans;
 
     return Container(
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -438,83 +443,90 @@ class _NetWorthCardState extends State<_NetWorthCard>
             const Text(
               'TOTAL NET WORTH',
               style: TextStyle(
-                fontFamily: 'DMSans',
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.12,
+                fontFamily: 'DMSans', fontSize: 10,
+                fontWeight: FontWeight.w600, letterSpacing: 0.12,
                 color: AppColors.text3,
               ),
             ),
             const Spacer(),
             const Text('Live',
-                style: TextStyle(
-                    fontFamily: 'DMMono', fontSize: 10, color: AppColors.teal)),
+                style: TextStyle(fontFamily: 'DMMono', fontSize: 10, color: AppColors.teal)),
             const SizedBox(width: 4),
             Container(
               width: 6, height: 6,
-              decoration: const BoxDecoration(
-                  shape: BoxShape.circle, color: AppColors.teal),
+              decoration: const BoxDecoration(shape: BoxShape.circle, color: AppColors.teal),
             ),
           ]),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
 
-          // ── Animated count-up ─────────────────────────────────
+          // ── Net worth: ₹ symbol separate so digits never overlap ─
           AnimatedBuilder(
             animation: _anim,
-            builder: (_, __) => Text(
-              formatInr(nw * _anim.value),
-              style: const TextStyle(
-                fontFamily: 'DMSans',
-                fontSize: 38,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -2.0,
-                color: AppColors.text,
-                height: 1.0,
-              ),
-            ),
+            builder: (_, __) {
+              final val = nw * _anim.value;
+              // Split ₹ symbol from number to prevent glyph collision
+              final numStr = NumberFormat('#,##,##0', 'en_IN').format(val.abs());
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (val < 0)
+                    const Text('-', style: TextStyle(
+                      fontFamily: 'DMSans', fontSize: 24,
+                      fontWeight: FontWeight.w400, color: AppColors.red,
+                      height: 1.6,
+                    )),
+                  const Text('₹', style: TextStyle(
+                    fontFamily: 'DMSans', fontSize: 22,
+                    fontWeight: FontWeight.w400, color: AppColors.text2,
+                    height: 1.8,
+                  )),
+                  const SizedBox(width: 2),
+                  Text(numStr, style: const TextStyle(
+                    fontFamily: 'DMSans', fontSize: 36,
+                    fontWeight: FontWeight.w700, letterSpacing: -1.5,
+                    color: AppColors.text, height: 1.0,
+                  )),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 8),
 
           // ── Change pill ───────────────────────────────────────
           if (biggestChange.isNotEmpty)
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: isPositive ? AppColors.greenSoft : AppColors.redSoft,
                 borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(
-                  isPositive
-                      ? Icons.arrow_upward_rounded
-                      : Icons.arrow_downward_rounded,
+                  isPositive ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
                   size: 11,
                   color: isPositive ? AppColors.green : AppColors.red,
                 ),
                 const SizedBox(width: 3),
-                Text(
-                  biggestChange,
-                  style: TextStyle(
-                    fontFamily: 'DMSans',
-                    fontSize: 11,
+                Text(biggestChange,
+                  style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
                     fontWeight: FontWeight.w500,
-                    color: isPositive ? AppColors.green : AppColors.red,
-                  ),
-                ),
+                    color: isPositive ? AppColors.green : AppColors.red)),
               ]),
             ),
 
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
 
-          // ── Sparkline ─────────────────────────────────────────
-          const SparklineChart(height: 44),
+          // ── Smart financial summary: 3 key metrics this month ─
+          // Replaces vague sparkline — shows actionable data
+          if (snap != null)
+            _MonthSummaryStrip(snapshot: snap)
+          else
+            const _MonthSummaryStripEmpty(),
 
-          // ── Mini allocation bar ───────────────────────────────
+          // ── Asset allocation bar ──────────────────────────────
           if (total > 0) ...[
-            const SizedBox(height: 16),
-            _MiniAllocationBar(
-              banks: banks, invest: invest, cards: cards, loans: loans),
+            const SizedBox(height: 12),
+            _MiniAllocationBar(banks: banks, invest: invest, cards: cards, loans: loans),
           ],
         ],
       ),
@@ -589,6 +601,235 @@ class _AllocDot extends StatelessWidget {
             fontFamily: 'DMSans', fontSize: 9, color: AppColors.text3),
       ),
     ],
+  );
+}
+
+// ── Smart month summary strip ─────────────────────────────────────────────
+// Replaces vague sparkline — 3 actionable financial metrics for this month
+
+class _MonthSummaryStrip extends StatelessWidget {
+  final FinancialSnapshotModel snapshot;
+  const _MonthSummaryStrip({required this.snapshot});
+
+  @override
+  Widget build(BuildContext context) {
+    final income  = snapshot.monthlyIncome;
+    final spend   = snapshot.monthlySpend;
+    final savings = income > 0 ? ((income - spend) / income * 100).clamp(0.0, 100.0) : 0.0;
+    final emi     = snapshot.emiRatio * 100;
+
+    return Row(children: [
+      _StatChip(
+        label: 'Income',
+        value: formatInr(income, compact: true),
+        color: const Color(0xFF22C55E),
+        icon: Icons.arrow_downward_rounded,
+      ),
+      const SizedBox(width: 8),
+      _StatChip(
+        label: 'Spend',
+        value: formatInr(spend, compact: true),
+        color: const Color(0xFFEF4444),
+        icon: Icons.arrow_upward_rounded,
+      ),
+      const SizedBox(width: 8),
+      _StatChip(
+        label: 'Saved',
+        value: '${savings.toStringAsFixed(0)}%',
+        color: const Color(0xFF7B2FFE),
+        icon: Icons.savings_outlined,
+      ),
+    ]);
+  }
+}
+
+class _MonthSummaryStripEmpty extends StatelessWidget {
+  const _MonthSummaryStripEmpty();
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+    _StatChip(label: 'Income', value: '—', color: const Color(0xFF22C55E), icon: Icons.arrow_downward_rounded),
+    const SizedBox(width: 8),
+    _StatChip(label: 'Spend',  value: '—', color: const Color(0xFFEF4444), icon: Icons.arrow_upward_rounded),
+    const SizedBox(width: 8),
+    _StatChip(label: 'Saved',  value: '—', color: const Color(0xFF7B2FFE), icon: Icons.savings_outlined),
+  ]);
+}
+
+class _StatChip extends StatelessWidget {
+  final String label, value;
+  final Color  color;
+  final IconData icon;
+  const _StatChip({required this.label, required this.value,
+      required this.color, required this.icon});
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(icon, size: 10, color: color),
+          const SizedBox(width: 3),
+          Text(label, style: TextStyle(fontFamily: 'DMSans', fontSize: 9,
+              color: color.withValues(alpha: 0.80))),
+        ]),
+        const SizedBox(height: 3),
+        Text(value, style: TextStyle(fontFamily: 'DMMono', fontSize: 13,
+            fontWeight: FontWeight.w700, color: color)),
+      ]),
+    ),
+  );
+}
+
+// ── Notification sheet ────────────────────────────────────────────────────────
+
+class _NotificationSheet extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final snap = ref.watch(snapshotProvider).value;
+
+    final items = <_NotifItem>[
+      if (snap != null && snap.emiRatio > 0.35)
+        _NotifItem(
+          icon: Icons.warning_amber_rounded,
+          color: const Color(0xFFF59E0B),
+          title: 'High EMI burden',
+          body: 'Your EMIs are ${(snap.emiRatio * 100).toStringAsFixed(0)}% of income — above the safe 35% threshold.',
+          time: 'Today',
+        ),
+      if (snap != null && snap.creditUtil > 0.5)
+        _NotifItem(
+          icon: Icons.credit_card_off_rounded,
+          color: const Color(0xFFEF4444),
+          title: 'Credit utilisation high',
+          body: 'Using ${(snap.creditUtil * 100).toStringAsFixed(0)}% of your credit limit. Keep it under 30%.',
+          time: 'Today',
+        ),
+      if (snap != null && snap.savingsRate < 0.10)
+        _NotifItem(
+          icon: Icons.savings_outlined,
+          color: const Color(0xFF7B2FFE),
+          title: 'Low savings rate',
+          body: 'Saving only ${(snap.savingsRate * 100).toStringAsFixed(0)}% of income. Target: 20%+.',
+          time: 'Today',
+        ),
+      _NotifItem(
+        icon: Icons.auto_awesome_rounded,
+        color: const Color(0xFF00CFDE),
+        title: 'AI insight ready',
+        body: 'Your weekly financial analysis is available. Tap to view.',
+        time: 'This week',
+        onTap: () { Navigator.pop(context); context.go('/chat'); },
+      ),
+    ];
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      decoration: BoxDecoration(
+        color: AppColors.bg2,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border2),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Container(
+              width: 36, height: 4,
+              decoration: BoxDecoration(color: AppColors.border2,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+            child: Row(children: [
+              const Text('Notifications',
+                style: TextStyle(fontFamily: 'DMSans', fontSize: 16,
+                    fontWeight: FontWeight.w700, color: AppColors.text)),
+              const Spacer(),
+              if (items.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7B2FFE).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text('${items.length}',
+                    style: const TextStyle(fontFamily: 'DMMono', fontSize: 11,
+                        fontWeight: FontWeight.w700, color: Color(0xFF7B2FFE))),
+                ),
+            ]),
+          ),
+          if (items.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('All clear — no alerts right now.',
+                style: TextStyle(fontFamily: 'DMSans', fontSize: 13,
+                    color: AppColors.text3)),
+            )
+          else
+            ...items.map((item) => _NotifTile(item: item)),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+}
+
+class _NotifItem {
+  final IconData icon;
+  final Color    color;
+  final String   title, body, time;
+  final VoidCallback? onTap;
+  const _NotifItem({required this.icon, required this.color,
+      required this.title, required this.body, required this.time, this.onTap});
+}
+
+class _NotifTile extends StatelessWidget {
+  final _NotifItem item;
+  const _NotifTile({required this.item});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: item.onTap,
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          width: 36, height: 36,
+          decoration: BoxDecoration(
+            color: item.color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          alignment: Alignment.center,
+          child: Icon(item.icon, color: item.color, size: 17),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Expanded(child: Text(item.title,
+                style: const TextStyle(fontFamily: 'DMSans', fontSize: 13,
+                    fontWeight: FontWeight.w600, color: AppColors.text))),
+              Text(item.time, style: const TextStyle(fontFamily: 'DMSans',
+                  fontSize: 9.5, color: AppColors.text3)),
+            ]),
+            const SizedBox(height: 2),
+            Text(item.body, style: const TextStyle(fontFamily: 'DMSans',
+                fontSize: 11.5, color: AppColors.text2, height: 1.4)),
+          ],
+        )),
+      ]),
+    ),
   );
 }
 

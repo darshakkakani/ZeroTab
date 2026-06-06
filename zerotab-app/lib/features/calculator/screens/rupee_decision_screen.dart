@@ -627,8 +627,8 @@ class _LoanSelector extends StatelessWidget {
         onTap: () => onSelect(loan),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(14),
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             color: isSelected ? _kViolet.withValues(alpha: 0.08) : _kCard,
             borderRadius: BorderRadius.circular(14),
@@ -703,8 +703,8 @@ class _AmountInput extends StatelessWidget {
     ),
     child: Row(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
-        child: Text('₹', style: TextStyle(fontFamily: 'DMMono', fontSize: 22,
+        padding: const EdgeInsets.fromLTRB(14, 0, 6, 0),
+        child: Text('₹', style: TextStyle(fontFamily: 'DMMono', fontSize: 18,
             fontWeight: FontWeight.w700, color: _kViolet.withValues(alpha: 0.8))),
       ),
       Expanded(
@@ -713,13 +713,13 @@ class _AmountInput extends StatelessWidget {
           onChanged: onChanged,
           keyboardType: const TextInputType.numberWithOptions(decimal: false),
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          style: const TextStyle(fontFamily: 'DMMono', fontSize: 22,
+          style: const TextStyle(fontFamily: 'DMMono', fontSize: 20,
               fontWeight: FontWeight.w700, color: Colors.white),
           decoration: const InputDecoration(
             hintText: '50000',
-            hintStyle: TextStyle(color: AppColors.text3, fontSize: 18),
+            hintStyle: TextStyle(color: AppColors.text3, fontSize: 16),
             border: InputBorder.none,
-            contentPadding: EdgeInsets.symmetric(vertical: 14),
+            contentPadding: EdgeInsets.symmetric(vertical: 11),
           ),
         ),
       ),
@@ -988,29 +988,31 @@ class _VerdictHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     width: double.infinity,
-    padding: const EdgeInsets.all(22),
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
     decoration: BoxDecoration(
       gradient: LinearGradient(
         colors: [accent.withValues(alpha: 0.12), accent.withValues(alpha: 0.04)],
         begin: Alignment.topLeft, end: Alignment.bottomRight,
       ),
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(18),
       border: Border.all(color: accent.withValues(alpha: 0.35)),
     ),
-    child: Column(children: [
+    child: Row(children: [
       // Icon painter instead of emoji
       CustomPaint(
-        size: const Size(40, 40),
+        size: const Size(36, 36),
         painter: wins ? _InvestIconPainter(accent) : _PrepayIconPainter(accent),
       ),
-      const SizedBox(height: 12),
-      Text(label,
-        style: TextStyle(fontFamily: 'DMMono', fontSize: 28,
-            fontWeight: FontWeight.w800, color: accent, letterSpacing: 2.0)),
-      const SizedBox(height: 6),
-      Text(verdict,
-        style: const TextStyle(fontFamily: 'DMSans', fontSize: 14,
-            fontWeight: FontWeight.w600, color: Colors.white)),
+      const SizedBox(width: 14),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label,
+          style: TextStyle(fontFamily: 'DMMono', fontSize: 22,
+              fontWeight: FontWeight.w800, color: accent, letterSpacing: 2.0)),
+        const SizedBox(height: 3),
+        Text(verdict,
+          style: const TextStyle(fontFamily: 'DMSans', fontSize: 12,
+              fontWeight: FontWeight.w500, color: Colors.white)),
+      ])),
     ]),
   );
 }
@@ -1119,30 +1121,45 @@ class _WealthChart extends StatelessWidget {
         border: Border.all(color: _kBorder),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Legend
+        // Header + explanation
         Row(children: [
           const Expanded(
-            child: Text('Wealth Growth Trajectory',
-              style: TextStyle(fontFamily: 'DMSans', fontSize: 12,
-                  fontWeight: FontWeight.w600, color: Colors.white)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Wealth Growth Trajectory',
+                style: TextStyle(fontFamily: 'DMSans', fontSize: 12,
+                    fontWeight: FontWeight.w600, color: Colors.white)),
+              SizedBox(height: 2),
+              Text('How much your ₹ grows in each path over your loan tenure',
+                style: TextStyle(fontFamily: 'DMSans', fontSize: 10,
+                    color: AppColors.text3)),
+            ]),
           ),
-          _LegendDot('Invest', _kGreen),
-          const SizedBox(width: 12),
-          _LegendDot('Prepay', _kViolet),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            _LegendDot('Invest', _kGreen),
+            SizedBox(height: 4),
+            _LegendDot('Prepay', _kViolet),
+          ]),
         ]),
 
         if (breakEvenMonth > 0) ...[
-          const SizedBox(height: 4),
-          Text(
-            'Paths cross at ${(breakEvenMonth / 12.0).toStringAsFixed(1)} yrs',
-            style: const TextStyle(fontFamily: 'DMSans', fontSize: 10,
-                color: AppColors.text3)),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'Paths cross at ${(breakEvenMonth / 12.0).toStringAsFixed(1)} yrs — before this, prepay leads; after, invest leads',
+              style: const TextStyle(fontFamily: 'DMSans', fontSize: 9.5,
+                  color: AppColors.text2)),
+          ),
         ],
 
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
 
         SizedBox(
-          height: 160,
+          height: 130,
           child: LineChart(LineChartData(
             minX: 0,
             maxX: remainingYears,
@@ -1284,10 +1301,10 @@ class _MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(14),
+    padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(
       color: active ? accent.withValues(alpha: 0.07) : _kCard,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(14),
       border: Border.all(
         color: active ? accent.withValues(alpha: 0.40) : _kBorder,
         width: active ? 1.5 : 1,
