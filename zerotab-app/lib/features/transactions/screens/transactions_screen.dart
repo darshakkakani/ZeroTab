@@ -849,7 +849,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     const SizedBox(width: 14),
                 ]),
               ),
-            ),
+            )),
+
             SliverToBoxAdapter(child: const SizedBox(height: 8)),
 
             // ── Category filter chips ─────────────────────
