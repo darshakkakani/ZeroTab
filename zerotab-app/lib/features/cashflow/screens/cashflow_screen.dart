@@ -45,36 +45,33 @@ class CashFlowScreen extends ConsumerWidget {
                       mainAxisAlignment:
                           MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(children: [
-                          GestureDetector(
-                            onTap: () => context.canPop() ? context.pop() : context.go('/home'),
-                            child: Container(
-                              width: 36, height: 36,
-                              decoration: BoxDecoration(
-                                color: AppColors.bg3,
-                                borderRadius: BorderRadius.circular(AppRadius.sm),
-                                border: Border.all(color: AppColors.border),
-                              ),
-                              alignment: Alignment.center,
-                              child: const Icon(
-                                Icons.arrow_back_ios_new_rounded,
-                                color: AppColors.text2,
-                                size: 15,
-                              ),
-                            ),
+                        const Text(
+                          'Cash Flow',
+                          style: TextStyle(
+                            fontFamily: 'DMSans',
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.6,
+                            color: AppColors.text,
                           ),
-                          const SizedBox(width: 12),
-                          const Text(
-                            'Cash Flow',
-                            style: TextStyle(
-                              fontFamily: 'DMSans',
-                              fontSize: 22,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -0.6,
-                              color: AppColors.text,
+                        ),
+                        const Spacer(),
+                        // X close button — goes back or to home
+                        GestureDetector(
+                          onTap: () => context.canPop() ? context.pop() : context.go('/home'),
+                          child: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: AppColors.bg3,
+                              borderRadius: BorderRadius.circular(AppRadius.sm),
+                              border: Border.all(color: AppColors.border),
                             ),
+                            alignment: Alignment.center,
+                            child: const Icon(Icons.close_rounded,
+                                color: AppColors.text2, size: 16),
                           ),
-                        ]),
+                        ),
+                        const SizedBox(width: 10),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 5),

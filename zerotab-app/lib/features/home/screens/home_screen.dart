@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
@@ -39,6 +38,18 @@ class HomeScreen extends ConsumerWidget {
     final displayName = isDefault
         ? (authEmail.isNotEmpty ? authEmail.split('@').first : 'Welcome back')
         : rawName;
+
+    // ── Pre-warm ALL tab providers so switching tabs is instant ──────────────
+    // ref.read() triggers fetch without creating a subscription.
+    // By the time user taps Invest/Debt/Spend tab, data is already cached.
+    ref.read(mfHoldingsProvider);
+    ref.read(accountsProvider);
+    ref.read(cashflowProvider);
+    ref.read(insightsFeedProvider);
+    ref.read(userProfileProvider);
+    final now = DateTime.now();
+    final monthKey = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+    ref.read(txnSummaryProvider(monthKey));
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -338,24 +349,8 @@ class _HomeHeader extends StatelessWidget {
             ],
           ),
         ),
-        // ── Notification bell ────────────────────────────────
-        GestureDetector(
-          onTap: () => _showNotificationSheet(context),
-          child: Container(
-            width: 36, height: 36,
-            decoration: BoxDecoration(
-              color: AppColors.bg3,
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-              border: Border.all(color: AppColors.border),
-            ),
-            alignment: Alignment.center,
-            child: const Icon(
-              Icons.notifications_outlined,
-              color: AppColors.text2,
-              size: 18,
-            ),
-          ),
-        ),
+        // ── Notification bell with badge count ──────────────
+        _NotificationBell(onTap: () => _showNotificationSheet(context)),
       ]),
     );
   }
@@ -459,34 +454,26 @@ class _NetWorthCardState extends State<_NetWorthCard>
           ]),
           const SizedBox(height: 8),
 
-          // ── Net worth: ₹ symbol separate so digits never overlap ─
+          // ── Net worth — single unified text, no glyph collision ──
           AnimatedBuilder(
             animation: _anim,
             builder: (_, __) {
               final val = nw * _anim.value;
-              // Split ₹ symbol from number to prevent glyph collision
-              final numStr = NumberFormat('#,##,##0', 'en_IN').format(val.abs());
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (val < 0)
-                    const Text('-', style: TextStyle(
-                      fontFamily: 'DMSans', fontSize: 24,
-                      fontWeight: FontWeight.w400, color: AppColors.red,
-                      height: 1.6,
-                    )),
-                  const Text('₹', style: TextStyle(
-                    fontFamily: 'DMSans', fontSize: 22,
-                    fontWeight: FontWeight.w400, color: AppColors.text2,
-                    height: 1.8,
-                  )),
-                  const SizedBox(width: 2),
-                  Text(numStr, style: const TextStyle(
-                    fontFamily: 'DMSans', fontSize: 36,
-                    fontWeight: FontWeight.w700, letterSpacing: -1.5,
-                    color: AppColors.text, height: 1.0,
-                  )),
-                ],
+              final isNeg = val < 0;
+              // Use formatInr with sign prefix — ONE widget, ONE font size
+              final display = isNeg
+                  ? '-${formatInr(val.abs())}'
+                  : formatInr(val);
+              return Text(
+                display,
+                style: TextStyle(
+                  fontFamily: 'DMSans',
+                  fontSize: 34,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -1.0,
+                  color: isNeg ? AppColors.red : AppColors.text,
+                  height: 1.1,
+                ),
               );
             },
           ),
@@ -685,6 +672,67 @@ class _StatChip extends StatelessWidget {
       ]),
     ),
   );
+}
+
+// ── Notification bell with live badge ────────────────────────────────────────
+
+class _NotificationBell extends ConsumerWidget {
+  final VoidCallback onTap;
+  const _NotificationBell({required this.onTap});
+
+  int _countAlerts(FinancialSnapshotModel? snap) {
+    if (snap == null) return 1; // AI insight always
+    int count = 1; // AI insight
+    if (snap.emiRatio > 0.35)   count++;
+    if (snap.creditUtil > 0.5)  count++;
+    if (snap.savingsRate < 0.10) count++;
+    return count;
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final snap  = ref.watch(snapshotProvider).value;
+    final count = _countAlerts(snap);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.bg3,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              border: Border.all(color: AppColors.border),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(Icons.notifications_outlined,
+                color: AppColors.text2, size: 18),
+          ),
+          // Badge — top right corner
+          if (count > 0)
+            Positioned(
+              top: -4, right: -4,
+              child: Container(
+                width: 17, height: 17,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF7B2FFE),
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  count > 9 ? '9+' : '$count',
+                  style: const TextStyle(
+                    fontFamily: 'DMSans', fontSize: 8.5,
+                    fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 // ── Notification sheet ────────────────────────────────────────────────────────
