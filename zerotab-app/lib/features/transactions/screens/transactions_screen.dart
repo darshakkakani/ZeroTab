@@ -659,6 +659,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                 snapshot: snapAsync.value,
                 onImport:  _importBankStatement,
                 importing: _importing,
+                txns: txnAsync.valueOrNull != null
+                    ? (txnAsync.valueOrNull!['data'] as List? ?? [])
+                        .map((e) => TransactionModel.fromJson(e as Map<String, dynamic>))
+                        .toList()
+                    : const [],
               ),
             ),
             const SizedBox(height: 10),
@@ -700,6 +705,45 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                       ],
                     ),
                   ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+
+            // ── Budget Envelopes (YNAB) ──────────────────
+            txnAsync.when(
+              loading: () => const SizedBox.shrink(),
+              error:   (_, __) => const SizedBox.shrink(),
+              data:    (data) {
+                final txns = (data['data'] as List? ?? [])
+                    .map((e) => TransactionModel.fromJson(e as Map<String, dynamic>))
+                    .toList();
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: EnvelopeBudgets(txns: txns),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+
+            // ── Split ledger (Splitwise-style) ────────────
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: SplitLedger(),
+            ),
+            const SizedBox(height: 8),
+
+            // ── Subscription Radar ────────────────────────
+            txnAsync.when(
+              loading: () => const SizedBox.shrink(),
+              error:   (_, __) => const SizedBox.shrink(),
+              data:    (data) {
+                final txns = (data['data'] as List? ?? [])
+                    .map((e) => TransactionModel.fromJson(e as Map<String, dynamic>))
+                    .toList();
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: SubscriptionRadar(allTxns: txns),
                 );
               },
             ),
