@@ -387,9 +387,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         return;
       }
 
-      // POST to /transactions/import-pdf with file bytes as base64
+      // POST to /import-pdf (Edge Function deployed as 'import-pdf')
       try {
-        final res = await api.post('/transactions/import-pdf', data: {
+        final res = await api.post(ApiConstants.importPdf, data: {
           'file_name': file.name,
           'file_bytes_b64': _bytesToBase64(bytes),
         });
@@ -600,10 +600,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         child: _UniformFAB(onTap: _showAddSheet),
       ),
       body: SafeArea(
-        child: Column(
-          children: [
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+
             // ── Header ──────────────────────────────────
-            Padding(
+            SliverToBoxAdapter(child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
               child: Row(children: [
                 const Expanded(
@@ -648,12 +650,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   ),
                 ),
               ]),
-            ),
-            const SizedBox(height: 12),
+            )),
+
+            SliverToBoxAdapter(child: const SizedBox(height: 12)),
 
             // ── Budget Brain: The #1 number users need ────
-            // "How much can I freely spend without worrying?"
-            Padding(
+            SliverToBoxAdapter(child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: BudgetBrainCard(
                 snapshot: snapAsync.value,
@@ -665,11 +667,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                         .toList()
                     : const [],
               ),
-            ),
-            const SizedBox(height: 10),
+            )),
+
+            SliverToBoxAdapter(child: const SizedBox(height: 10)),
 
             // ── Spending summary card ─────────────────────
-            txnAsync.when(
+            SliverToBoxAdapter(child: txnAsync.when(
               loading: () => const SizedBox.shrink(),
               error: (_, __) => const SizedBox.shrink(),
               data: (data) {
@@ -707,11 +710,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   ),
                 );
               },
-            ),
-            const SizedBox(height: 8),
+            )),
+
+            SliverToBoxAdapter(child: const SizedBox(height: 8)),
 
             // ── Budget Envelopes (YNAB) ──────────────────
-            txnAsync.when(
+            SliverToBoxAdapter(child: txnAsync.when(
               loading: () => const SizedBox.shrink(),
               error:   (_, __) => const SizedBox.shrink(),
               data:    (data) {
@@ -723,18 +727,20 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   child: EnvelopeBudgets(txns: txns),
                 );
               },
-            ),
-            const SizedBox(height: 8),
+            )),
+
+            SliverToBoxAdapter(child: const SizedBox(height: 8)),
 
             // ── Split ledger (Splitwise-style) ────────────
-            const Padding(
+            const SliverToBoxAdapter(child: Padding(
               padding: EdgeInsets.symmetric(horizontal: 20),
               child: SplitLedger(),
-            ),
-            const SizedBox(height: 8),
+            )),
+
+            SliverToBoxAdapter(child: const SizedBox(height: 8)),
 
             // ── Subscription Radar ────────────────────────
-            txnAsync.when(
+            SliverToBoxAdapter(child: txnAsync.when(
               loading: () => const SizedBox.shrink(),
               error:   (_, __) => const SizedBox.shrink(),
               data:    (data) {
@@ -746,11 +752,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   child: SubscriptionRadar(allTxns: txns),
                 );
               },
-            ),
-            const SizedBox(height: 8),
+            )),
+
+            SliverToBoxAdapter(child: const SizedBox(height: 8)),
 
             // ── Money habits (merchant patterns) ─────────
-            txnAsync.when(
+            SliverToBoxAdapter(child: txnAsync.when(
               loading: () => const SizedBox.shrink(),
               error:   (_, __) => const SizedBox.shrink(),
               data:    (data) {
@@ -769,11 +776,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   ),
                 );
               },
-            ),
-            const SizedBox(height: 8),
+            )),
+
+            SliverToBoxAdapter(child: const SizedBox(height: 8)),
 
             // ── Search bar ───────────────────────────────
-            Padding(
+            SliverToBoxAdapter(child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Container(
                 height: 46,
@@ -842,10 +850,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                 ]),
               ),
             ),
-            const SizedBox(height: 8),
+            SliverToBoxAdapter(child: const SizedBox(height: 8)),
 
             // ── Category filter chips ─────────────────────
-            SizedBox(
+            SliverToBoxAdapter(child: SizedBox(
               height: 30,
               child: ListView(
                 scrollDirection: Axis.horizontal,
@@ -881,37 +889,36 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   );
                 }).toList(),
               ),
-            ),
-            const SizedBox(height: 6),
+            )),
 
-            // ── Transaction list ─────────────────────────
-            Expanded(
-              child: txnAsync.when(
-                loading: () => _buildShimmer(),
-                error: (e, _) => Center(
+            SliverToBoxAdapter(child: const SizedBox(height: 6)),
+
+            // ── Transaction list (inline, no Expanded needed) ─────
+            SliverToBoxAdapter(child: txnAsync.when(
+              loading: () => _buildShimmer(),
+              error: (e, _) => Center(
                   child: Text('Error: $e', style: const TextStyle(color: AppColors.red))),
-                data: (data) {
-                  final txns = (data['data'] as List? ?? [])
-                      .map((e) => TransactionModel.fromJson(e as Map<String, dynamic>))
-                      .toList();
-                  if (txns.isEmpty) return _EmptyState(onAdd: _showAddSheet);
-                  return _TransactionList(txns: txns, onDelete: _deleteTransaction);
-                },
-              ),
-            ),
+              data: (data) {
+                final txns = (data['data'] as List? ?? [])
+                    .map((e) => TransactionModel.fromJson(e as Map<String, dynamic>))
+                    .toList();
+                if (txns.isEmpty) return _EmptyState(onAdd: _showAddSheet);
+                return _TransactionList(txns: txns, onDelete: _deleteTransaction);
+              },
+            )),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 100)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildShimmer() => ListView.builder(
-    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-    itemCount: 5,
-    itemBuilder: (_, i) => Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+  Widget _buildShimmer() => Column(
+    children: List.generate(3, (i) => Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
       child: ZTShimmerBox(width: double.infinity, height: 62, radius: AppRadius.lg),
-    ),
+    )),
   );
 }
 
@@ -1285,9 +1292,8 @@ class _TransactionList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final groups = _group();
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.only(bottom: 88),
+    // Use Column (shrinkWrap) since parent is CustomScrollView
+    return Column(
       children: groups.entries.map((e) {
         // Date header + day total
         final dayDebit  = e.value.where((t) => t.isDebit).fold(0.0, (s, t) => s + t.amount);

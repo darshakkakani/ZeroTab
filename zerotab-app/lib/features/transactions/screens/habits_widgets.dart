@@ -108,30 +108,44 @@ class BudgetBrainCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final snap = snapshot;
-
-    // ── No income data: show helpful setup prompt ───────────────
-    if (snap == null || snap.monthlyIncome <= 0) {
+    // ── Use REAL transaction data (avoids broken emiRatio estimates) ──────
+    // If we have live transactions, compute everything from them directly.
+    // This is always accurate because it's what the user actually did.
+    if (txns.isEmpty && (snapshot == null || snapshot!.monthlyIncome <= 0)) {
       return _NoIncomeCard(onImport: onImport, importing: importing);
     }
 
-    final now          = DateTime.now();
-    final daysInMonth  = DateTime(now.year, now.month + 1, 0).day;
-    final daysPassed   = now.day.clamp(1, daysInMonth);
-    final monthFrac    = daysPassed / daysInMonth;
+    final now         = DateTime.now();
+    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    final daysPassed  = now.day.clamp(1, daysInMonth);
+    final monthFrac   = daysPassed / daysInMonth;
 
-    final income       = snap.monthlyIncome;
+    // Income = credit transactions this period
+    final creditTxns = txns.where((t) => t.isCredit).toList();
+    final debitTxns  = txns.where((t) => t.isDebit).toList();
 
-    // Fixed commitments = EMI ratio × income (rent, EMIs, SIPs)
-    final fixedCommit  = income * snap.emiRatio;
+    // Prefer live txn income; fall back to snapshot
+    final income = creditTxns.isNotEmpty
+        ? creditTxns.fold(0.0, (s, t) => s + t.amount)
+        : (snapshot?.monthlyIncome ?? 0);
 
-    // Use live txn spend if available, else snapshot spend
-    final spent = txns.isNotEmpty
-        ? txns.where((t) => t.isDebit).fold(0.0, (s, t) => s + t.amount)
-        : snap.monthlySpend;
+    if (income <= 0) {
+      return _NoIncomeCard(onImport: onImport, importing: importing);
+    }
 
-    // Discretionary budget = income - fixed commitments
-    final budget   = (income - fixedCommit).clamp(1.0, income);
+    // Fixed commitments = EMI transactions only (not all debits)
+    final fixedCommit = debitTxns
+        .where((t) => t.category == 'emi' || t.category == 'investment')
+        .fold(0.0, (s, t) => s + t.amount)
+        .clamp(0.0, income * 0.80); // cap at 80% of income
+
+    // Variable spend = everything else debited
+    final spent = debitTxns
+        .where((t) => t.category != 'emi' && t.category != 'investment')
+        .fold(0.0, (s, t) => s + t.amount);
+
+    // Discretionary budget = income minus fixed commitments
+    final budget   = (income - fixedCommit).clamp(income * 0.10, income);
     final freeLeft = (budget - spent).clamp(0.0, budget);
 
     // Burn rate & projection
@@ -510,6 +524,7 @@ class _EnvelopeBudgetsState extends State<EnvelopeBudgets> {
           final color  = catColor(e.key);
           final over   = s > budget;
           return GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => _editBudget(e.key),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),

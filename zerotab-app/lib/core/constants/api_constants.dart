@@ -60,6 +60,9 @@ class ApiConstants {
   // Accounts
   static const String accountAdjustBalance = '/accounts';
 
+  // PDF Import (Edge Function named 'import-pdf', not under /transactions/)
+  static const String importPdf = '/import-pdf';
+
   // AI Chat
   static const String aiChatMessage   = '/ai-chat/message';
   static const String aiChatQuick     = '/ai-chat/quick';

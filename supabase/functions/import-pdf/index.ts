@@ -53,10 +53,13 @@ function parseDate(raw: string): string | null {
     jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',
     jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12',
   }
-  const dmy3 = raw.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})$/)
+  // DD MMM YYYY or DD MMM YY (Standard Chartered uses YY)
+  const dmy3 = raw.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2,4})$/)
   if (dmy3) {
     const m = months[dmy3[2].toLowerCase()]
-    if (m) return `${dmy3[3]}-${m}-${dmy3[1].padStart(2,'0')}`
+    let yr = dmy3[3]
+    if (yr.length === 2) yr = parseInt(yr) > 50 ? `19${yr}` : `20${yr}`
+    if (m) return `${yr}-${m}-${dmy3[1].padStart(2,'0')}`
   }
 
   // DD-MMM-YYYY (ICICI format)
@@ -213,6 +216,76 @@ function parseGeneric(lines: string[]): ParsedTransaction[] {
   return txns
 }
 
+// Standard Chartered: DD MMM YY | Value Date | Description | Cheque | Deposit | Withdrawal | Balance
+function parseStandardChartered(text: string): ParsedTransaction[] {
+  const txns: ParsedTransaction[] = []
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 5)
+
+  // Match: "DD MMM YY  DD MMM YY  <description>  <amounts>"
+  const dateRe = /^(\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4})/
+  const amtRe  = /([\d,]+\.\d{2})/g
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const dm = line.match(dateRe)
+    if (!dm) continue
+
+    const date = parseDate(dm[1])
+    if (!date) continue
+
+    // Skip BALANCE FORWARD and similar non-transaction rows
+    const upper = line.toUpperCase()
+    if (upper.includes('BALANCE FORWARD') || upper.includes('OPENING BALANCE') ||
+        upper.includes('CLOSING BALANCE')) continue
+
+    // Collect description by removing dates and amounts
+    let desc = line
+      .replace(/^\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4}\s*/g, '')  // remove date(s)
+      .replace(/[\d,]+\.\d{2}/g, '')                           // remove amounts
+      .replace(/\s+/g, ' ').trim()
+
+    // Get amounts from this line
+    const allAmts = [...line.matchAll(amtRe)].map(m => parseAmount(m[1]))
+
+    if (allAmts.length < 1) continue
+
+    // For StanChart: last amount = balance, second-to-last = debit or credit
+    // Format: [possibly_cheque,] deposit?, withdrawal?, balance
+    let deposit    = 0
+    let withdrawal = 0
+    const balance  = allAmts[allAmts.length - 1]
+
+    if (allAmts.length >= 3) {
+      // Could have both deposit AND withdrawal in same row (rare)
+      // Use the isCredit/isDebit keyword heuristic
+      const isCredit = upper.includes('CREDIT') || upper.includes('DEPOSIT') ||
+                       upper.includes('NEFT') || upper.includes('IMPS') ||
+                       upper.includes('SALARY') || upper.includes('INTEREST')
+      if (isCredit) deposit = allAmts[allAmts.length - 2]
+      else           withdrawal = allAmts[allAmts.length - 2]
+    } else if (allAmts.length === 2) {
+      // Single transaction + balance
+      // Determine type from keywords
+      const isCredit = upper.includes('CREDIT') || upper.includes('DEPOSIT') ||
+                       upper.includes('NEFT CR') || upper.includes('SALARY')
+      if (isCredit) deposit = allAmts[0]
+      else           withdrawal = allAmts[0]
+    }
+
+    const amount = deposit > 0 ? deposit : withdrawal
+    if (amount <= 0) continue
+
+    txns.push({
+      date,
+      description: desc.length > 5 ? desc : 'Transaction',
+      amount,
+      type:    deposit > 0 ? 'credit' : 'debit',
+      balance,
+    })
+  }
+  return txns
+}
+
 // ── Main parser: detect bank and apply correct parser ─────────
 function parseStatement(text: string): ParsedTransaction[] {
   const lines  = text.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(l => l.length > 10)
@@ -220,14 +293,20 @@ function parseStatement(text: string): ParsedTransaction[] {
 
   let txns: ParsedTransaction[] = []
 
-  if (upper.includes('HDFC BANK'))      txns = parseHDFC(lines)
+  if (upper.includes('STANDARD CHARTERED') || upper.includes('SCB') || upper.includes('SCBL'))
+    txns = parseStandardChartered(text)
+  else if (upper.includes('HDFC BANK'))      txns = parseHDFC(lines)
   else if (upper.includes('STATE BANK') || upper.includes('SBI')) txns = parseSBI(lines)
   else if (upper.includes('ICICI BANK')) txns = parseICICI(lines)
   else {
-    // Try HDFC, then SBI, then generic
-    txns = parseHDFC(lines)
-    if (txns.length < 2) txns = parseSBI(lines)
-    if (txns.length < 2) txns = parseGeneric(lines)
+    // Try each parser, use the one that extracts most transactions
+    const results = [
+      parseStandardChartered(text),
+      parseHDFC(lines),
+      parseSBI(lines),
+      parseGeneric(lines),
+    ]
+    txns = results.reduce((best, cur) => cur.length > best.length ? cur : best, [])
   }
 
   // Deduplicate within the parsed set
