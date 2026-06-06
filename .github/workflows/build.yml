@@ -58,6 +58,8 @@ jobs:
           name: zerotab-release-${{ github.sha }}
           path: zerotab-app/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
+        env:
+          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: false
 
       # ── On push to main: create/update a GitHub Release with the APK ──
       - name: 🏷️ Create GitHub Release with APK
@@ -100,6 +102,7 @@ jobs:
         run: flutter pub get
 
       - name: 🌐 Build Flutter Web
+
         working-directory: zerotab-app
         run: |
           flutter build web --release \
