@@ -1,0 +1,48 @@
+name: 🌐 Deploy Web
+
+# Runs on EVERY push — fast web deploy for quick testing
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  deploy-web:
+    name: 🌐 Build & Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🐦 Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.1'
+          channel: stable
+          cache: true
+
+      - name: 📦 Get dependencies
+        working-directory: zerotab-app
+        run: flutter pub get
+
+      - name: 🌐 Build Flutter Web
+        working-directory: zerotab-app
+        run: |
+          flutter build web --release \
+            --base-href /ZeroTab/ \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
+            --dart-define=SUPABASE_FUNCTIONS_URL=${{ secrets.SUPABASE_FUNCTIONS_URL }} \
+            --dart-define=POSTHOG_KEY=
+
+      - name: 🚀 Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: zerotab-app/build/web
+          commit_message: "deploy: web build from ${{ github.sha }}"

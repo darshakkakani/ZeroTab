@@ -183,7 +183,7 @@ _DecisionResult runDecision({
       : grossGain * 0.15; // STCG 15% if < 1 year
 
   final fvAfterTax = fvLumpsum - ltcgTax;
-  final effectiveInvRate = (math.pow(fvAfterTax / extraAmount, 12.0 / remainingMonths) - 1) * 12 * 100;
+  final effectiveInvRate = ((math.pow(fvAfterTax / extraAmount, 12.0 / remainingMonths) - 1) * 12 * 100).toDouble();
 
   // Invest benefit = after-tax future value minus original amount, discounted to PV
   final investBenefit = fvAfterTax - extraAmount;
@@ -196,7 +196,7 @@ _DecisionResult runDecision({
       : diff > 0 ? _Decision.invest : _Decision.prepay;
 
   final reasoning = _buildReasoning(
-    decision, effectiveLoanRate, effectiveInvRate, diff.abs(),
+    decision, effectiveLoanRate, effectiveInvRate, diff.abs().toDouble(),
     monthsSaved, isHomeLoan, isOldTaxRegime, taxBracket,
   );
 
@@ -204,9 +204,9 @@ _DecisionResult runDecision({
     decision:          decision,
     prepayBenefit:     prepayBenefit,
     investBenefit:     investBenefit,
-    netDifference:     diff.abs(),
+    netDifference:     diff.abs().toDouble(),
     effectiveLoanRate: effectiveLoanRate,
-    effectiveInvRate:  effectiveInvRate.clamp(0, 99),
+    effectiveInvRate:  effectiveInvRate.clamp(0.0, 99.0),
     monthsSaved:       monthsSaved,
     futureValue:       fvAfterTax,
     interestSaved:     interestSaved,
