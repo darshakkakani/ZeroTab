@@ -259,7 +259,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   children: [
                     const SizedBox(width: 14, height: 14,
                         child: CircularProgressIndicator(
-                            strokeWidth: 1.5, color: AppColors.teal)),
+                            strokeWidth: 1.5, color: const Color(0xFF00CFDE))),
                     const SizedBox(width: 8),
                     Text('Loading conversation…',
                         style: TextStyle(fontFamily: 'DMSans', fontSize: 12,
@@ -332,7 +332,7 @@ class _ChatHeader extends StatelessWidget {
             width: 34, height: 34,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF00C4A8), Color(0xFF008B78)],
+                colors: [Color(0xFF7B2FFE), Color(0xFF1C0A4A)],
                 begin: Alignment.topLeft, end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(AppRadius.sm),
@@ -350,7 +350,7 @@ class _ChatHeader extends StatelessWidget {
                         fontWeight: FontWeight.w600, color: AppColors.text)),
                 Text('Your personal CFO',
                     style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
-                        color: AppColors.teal)),
+                        color: const Color(0xFF00CFDE))),
               ],
             ),
           ),
@@ -390,13 +390,13 @@ class _EmptyState extends StatelessWidget {
             width: 64, height: 64,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF00C4A8), Color(0xFF006B5C)],
+                colors: [Color(0xFF7B2FFE), Color(0xFF070D1F)],
                 begin: Alignment.topLeft, end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(18),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.teal.withOpacity(0.3),
+                  color: const Color(0xFF00CFDE).withOpacity(0.3),
                   blurRadius: 20, offset: const Offset(0, 6),
                 ),
               ],
@@ -458,7 +458,7 @@ class _SuggestionChip extends StatelessWidget {
                       fontWeight: FontWeight.w500, color: AppColors.text2)),
             ),
             const Icon(Icons.arrow_forward_ios_rounded,
-                color: AppColors.teal, size: 12),
+                color: const Color(0xFF00CFDE), size: 12),
           ],
         ),
       ),
@@ -489,7 +489,7 @@ class _MessageBubble extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppColors.bg3,
                 borderRadius: BorderRadius.circular(AppRadius.lg),
-                border: Border.all(color: AppColors.teal.withOpacity(0.1)),
+                border: Border.all(color: const Color(0xFF00CFDE).withOpacity(0.1)),
               ),
               child: const _TypingIndicator(),
             ),
@@ -552,7 +552,7 @@ class _MessageBubble extends StatelessWidget {
                   bottomLeft: Radius.circular(16),
                   bottomRight: Radius.circular(16),
                 ),
-                border: Border.all(color: AppColors.teal.withOpacity(0.1)),
+                border: Border.all(color: const Color(0xFF00CFDE).withOpacity(0.1)),
               ),
               child: _SmartMarkdown(data: message.content),
             ),
@@ -627,9 +627,9 @@ MarkdownStyleSheet _textStyleSheet() => MarkdownStyleSheet(
   h2: const TextStyle(fontFamily: 'DMSans', fontSize: 17,
       fontWeight: FontWeight.w700, color: Colors.white, height: 1.4),
   h3: const TextStyle(fontFamily: 'DMSans', fontSize: 15,
-      fontWeight: FontWeight.w600, color: AppColors.teal, height: 1.4),
+      fontWeight: FontWeight.w600, color: const Color(0xFF00CFDE), height: 1.4),
   listBullet: const TextStyle(fontFamily: 'DMSans', fontSize: 14,
-      color: AppColors.teal),
+      color: const Color(0xFF00CFDE)),
   listIndent: 16,
   code: TextStyle(fontFamily: 'monospace', fontSize: 13,
       color: AppColors.accent2,
@@ -642,7 +642,7 @@ MarkdownStyleSheet _textStyleSheet() => MarkdownStyleSheet(
   codeblockPadding: const EdgeInsets.all(12),
   blockquoteDecoration: BoxDecoration(
     border: Border(left: BorderSide(
-        color: AppColors.teal.withOpacity(0.5), width: 3)),
+        color: const Color(0xFF00CFDE).withOpacity(0.5), width: 3)),
   ),
   blockquotePadding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
   horizontalRuleDecoration: BoxDecoration(
@@ -650,7 +650,7 @@ MarkdownStyleSheet _textStyleSheet() => MarkdownStyleSheet(
         color: AppColors.border.withOpacity(0.3), width: 1)),
   ),
   a: const TextStyle(fontFamily: 'DMSans', fontSize: 14,
-      color: AppColors.teal, decoration: TextDecoration.underline),
+      color: const Color(0xFF00CFDE), decoration: TextDecoration.underline),
   pPadding: const EdgeInsets.only(bottom: 8),
   h1Padding: const EdgeInsets.only(bottom: 8, top: 4),
   h2Padding: const EdgeInsets.only(bottom: 6, top: 4),
@@ -661,16 +661,16 @@ MarkdownStyleSheet _textStyleSheet() => MarkdownStyleSheet(
 MarkdownStyleSheet _tableStyleSheet() => MarkdownStyleSheet(
   // Table-specific — rendered in scrollable container
   tableHead: const TextStyle(fontFamily: 'DMSans', fontSize: 12,
-      fontWeight: FontWeight.w700, color: AppColors.teal),
+      fontWeight: FontWeight.w700, color: const Color(0xFF00CFDE)),
   tableBody: const TextStyle(fontFamily: 'DMSans', fontSize: 12,
       color: AppColors.text, height: 1.4),
   tableCellsPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
   tableColumnWidth: const IntrinsicColumnWidth(),
   tableBorder: TableBorder(
-    top: BorderSide(color: AppColors.teal.withOpacity(0.3), width: 1),
-    bottom: BorderSide(color: AppColors.teal.withOpacity(0.3), width: 1),
-    left: BorderSide(color: AppColors.teal.withOpacity(0.15), width: 1),
-    right: BorderSide(color: AppColors.teal.withOpacity(0.15), width: 1),
+    top: BorderSide(color: const Color(0xFF00CFDE).withOpacity(0.3), width: 1),
+    bottom: BorderSide(color: const Color(0xFF00CFDE).withOpacity(0.3), width: 1),
+    left: BorderSide(color: const Color(0xFF00CFDE).withOpacity(0.15), width: 1),
+    right: BorderSide(color: const Color(0xFF00CFDE).withOpacity(0.15), width: 1),
     horizontalInside: BorderSide(color: AppColors.border.withOpacity(0.5), width: 1),
     verticalInside: BorderSide(color: AppColors.border.withOpacity(0.3), width: 1),
   ),
@@ -717,7 +717,7 @@ class _SmartMarkdown extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: AppColors.bg4.withOpacity(0.3),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.teal.withOpacity(0.12)),
+                    border: Border.all(color: const Color(0xFF00CFDE).withOpacity(0.12)),
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: SingleChildScrollView(
@@ -774,7 +774,7 @@ class _AiAvatar extends StatelessWidget {
       width: 28, height: 28,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF00C4A8), Color(0xFF008B78)],
+          colors: [Color(0xFF7B2FFE), Color(0xFF1C0A4A)],
         ),
         borderRadius: BorderRadius.circular(8),
       ),
@@ -830,7 +830,7 @@ class _TypingIndicatorState extends State<_TypingIndicator>
             width: 7, height: 7,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.teal.withOpacity(0.3 + ctrl.value * 0.7),
+              color: const Color(0xFF00CFDE).withOpacity(0.3 + ctrl.value * 0.7),
             ),
           ),
         );
@@ -898,7 +898,7 @@ class _InputBar extends StatelessWidget {
               width: 44, height: 44,
               decoration: BoxDecoration(
                 gradient: isSending ? null : const LinearGradient(
-                    colors: [Color(0xFF00C4A8), Color(0xFF008B78)]),
+                    colors: [Color(0xFF7B2FFE), Color(0xFF1C0A4A)]),
                 color: isSending ? AppColors.bg4 : null,
                 borderRadius: BorderRadius.circular(AppRadius.lg),
               ),
@@ -906,7 +906,7 @@ class _InputBar extends StatelessWidget {
               child: isSending
                   ? const SizedBox(width: 18, height: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppColors.teal))
+                          strokeWidth: 2, color: const Color(0xFF00CFDE)))
                   : const Icon(Icons.arrow_upward_rounded,
                       color: Colors.white, size: 20),
             ),

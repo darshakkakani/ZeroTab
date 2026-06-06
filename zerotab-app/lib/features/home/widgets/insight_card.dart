@@ -18,10 +18,10 @@ class InsightCard extends StatelessWidget {
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF0C1C19), Color(0xFF09110F)],
+            colors: [Color(0xFF100820), Color(0xFF07060F)],
           ),
           borderRadius: BorderRadius.circular(AppRadius.xxl),
-          border: Border.all(color: Color(0x2800C4A8)),
+          border: Border.all(color: const Color(0x287B2FFE)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

@@ -1981,21 +1981,24 @@ class _AskAiCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFF0D1520), Color(0xFF0A0F1A)],
+            colors: [Color(0x157B2FFE), Color(0x0D00CFDE)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(AppRadius.xl),
-          border: Border.all(color: AppColors.teal.withOpacity(0.18)),
+          border: Border.all(color: const Color(0x287B2FFE)),
         ),
         child: Row(children: [
           Container(
             width: 42, height: 42,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF00C4A8), Color(0xFF006B5C)],
+                colors: [Color(0xFF1C0A4A), Color(0xFF070D1F)],
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(color: const Color(0xFF7B2FFE), width: 1),
+              boxShadow: const [BoxShadow(color: Color(0x337B2FFE), blurRadius: 8)],
             ),
             alignment: Alignment.center,
             child: const AiBrainIcon(size: 22),
@@ -2016,17 +2019,17 @@ class _AskAiCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: AppColors.teal.withOpacity(0.12),
+                      color: const Color(0x1A7B2FFE),
                       borderRadius: BorderRadius.circular(AppRadius.pill),
-                      border: Border.all(color: AppColors.teal.withOpacity(0.3)),
+                      border: Border.all(color: const Color(0x407B2FFE)),
                     ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: const [
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
                       Text('Chat', style: TextStyle(
                         fontFamily: 'DMSans', fontSize: 10,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.teal)),
+                        color: Color(0xFF00CFDE))),
                       SizedBox(width: 3),
-                      Icon(Icons.arrow_forward_rounded, size: 10, color: AppColors.teal),
+                      Icon(Icons.arrow_forward_rounded, size: 10, color: Color(0xFF00CFDE)),
                     ]),
                   ),
                 ]),
