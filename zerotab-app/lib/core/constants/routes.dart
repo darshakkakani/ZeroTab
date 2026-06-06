@@ -16,6 +16,7 @@ import '../../features/home/screens/insight_detail_screen.dart';
 import '../../features/home/screens/health_score_screen.dart';
 import '../../features/chat/screens/chat_screen.dart';
 import '../../features/chat/screens/chat_hub_screen.dart';
+import '../../features/calculator/screens/rupee_decision_screen.dart';
 import '../../shared/widgets/main_scaffold.dart';
 import '../../shared/services/providers.dart';
 
@@ -115,6 +116,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/health',
             pageBuilder: (_, s) => _fade(s, const HealthScoreScreen()),
+          ),
+          GoRoute(
+            path: '/calculator/rupee-decision',
+            pageBuilder: (_, s) => _fade(s, const RupeeDecisionScreen()),
           ),
           GoRoute(
             path: '/chat',

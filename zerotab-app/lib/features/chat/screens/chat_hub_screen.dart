@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -253,28 +254,18 @@ class _HubHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () => context.canPop() ? context.pop() : context.go('/home'),
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.bg3,
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: const Icon(Icons.arrow_back_ios_new_rounded,
-                  color: AppColors.text2, size: 16),
-            ),
-          ),
-          const SizedBox(width: 12),
           Container(
             width: 34, height: 34,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF00C4A8), Color(0xFF008B78)],
+                colors: [Color(0xFF1C0A4A), Color(0xFF070D1F)],
                 begin: Alignment.topLeft, end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(AppRadius.sm),
+              border: Border.all(color: const Color(0xFF7B2FFE), width: 1),
+              boxShadow: const [
+                BoxShadow(color: Color(0x337B2FFE), blurRadius: 8),
+              ],
             ),
             alignment: Alignment.center,
             child: const AiBrainIcon(size: 18),
@@ -289,8 +280,22 @@ class _HubHeader extends StatelessWidget {
                         fontWeight: FontWeight.w600, color: AppColors.text)),
                 Text('Your personal CFO',
                     style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
-                        color: AppColors.teal)),
+                        color: Color(0xFF00CFDE))),
               ],
+            ),
+          ),
+          // X close button on right
+          GestureDetector(
+            onTap: () => context.canPop() ? context.pop() : context.go('/home'),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.bg3,
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: const Icon(Icons.close_rounded,
+                  color: AppColors.text2, size: 18),
             ),
           ),
         ],
@@ -308,36 +313,17 @@ class _HeroSection extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF00C4A8).withOpacity(0.08),
-            const Color(0xFF006B5C).withOpacity(0.04),
-          ],
+        gradient: const LinearGradient(
+          colors: [Color(0x147B2FFE), Color(0x0A00CFDE)],
           begin: Alignment.topLeft, end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.teal.withOpacity(0.12)),
+        border: Border.all(color: const Color(0x287B2FFE)),
       ),
       child: Column(
         children: [
-          Container(
-            width: 56, height: 56,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF00C4A8), Color(0xFF006B5C)],
-                begin: Alignment.topLeft, end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.teal.withOpacity(0.3),
-                  blurRadius: 20, offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            alignment: Alignment.center,
-            child: const AiBrainIcon(size: 28),
-          ),
+          // AI neural pulse animation instead of duplicate logo
+          const _AiPulseAnimation(),
           const SizedBox(height: 16),
           const Text(
             'Your AI Financial Brain',
@@ -373,6 +359,128 @@ class _HeroSection extends StatelessWidget {
     );
   }
 }
+
+// ── AI Pulse Animation ──────────────────────────────────────────
+// Concentric rings pulsing outward — "neural network thinking"
+// Replaces duplicate logo in hero section
+
+class _AiPulseAnimation extends StatefulWidget {
+  const _AiPulseAnimation();
+
+  @override
+  State<_AiPulseAnimation> createState() => _AiPulseAnimationState();
+}
+
+class _AiPulseAnimationState extends State<_AiPulseAnimation>
+    with TickerProviderStateMixin {
+  late AnimationController _ctrl1;
+  late AnimationController _ctrl2;
+  late AnimationController _ctrl3;
+  late AnimationController _dotCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl1 = AnimationController(vsync: this,
+        duration: const Duration(milliseconds: 2200))..repeat();
+    _ctrl2 = AnimationController(vsync: this,
+        duration: const Duration(milliseconds: 2200))
+      ..forward(from: 0.33)..addStatusListener((s) {
+        if (s == AnimationStatus.completed) _ctrl2.repeat();
+      });
+    _ctrl3 = AnimationController(vsync: this,
+        duration: const Duration(milliseconds: 2200))
+      ..forward(from: 0.66)..addStatusListener((s) {
+        if (s == AnimationStatus.completed) _ctrl3.repeat();
+      });
+    _dotCtrl = AnimationController(vsync: this,
+        duration: const Duration(milliseconds: 1800))..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctrl1.dispose(); _ctrl2.dispose();
+    _ctrl3.dispose(); _dotCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 80, height: 80,
+      child: AnimatedBuilder(
+        animation: Listenable.merge([_ctrl1, _ctrl2, _ctrl3, _dotCtrl]),
+        builder: (_, __) => CustomPaint(
+          painter: _PulsePainter(
+            ring1: _ctrl1.value,
+            ring2: _ctrl2.value,
+            ring3: _ctrl3.value,
+            dotPulse: _dotCtrl.value,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PulsePainter extends CustomPainter {
+  final double ring1, ring2, ring3, dotPulse;
+  const _PulsePainter({
+    required this.ring1, required this.ring2,
+    required this.ring3, required this.dotPulse,
+  });
+
+  static const _violet = Color(0xFF7B2FFE);
+  static const _cyan   = Color(0xFF00CFDE);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2, cy = size.height / 2;
+
+    // 3 concentric pulsing rings
+    for (final (t, color) in [
+      (ring1, _violet),
+      (ring2, Color.lerp(_violet, _cyan, 0.5)!),
+      (ring3, _cyan),
+    ]) {
+      final radius = 12.0 + 26.0 * t;
+      final alpha  = (1.0 - t) * 0.55;
+      canvas.drawCircle(
+        Offset(cx, cy), radius,
+        Paint()
+          ..color       = color.withValues(alpha: alpha)
+          ..style       = PaintingStyle.stroke
+          ..strokeWidth = 1.5 * (1 - t * 0.6),
+      );
+    }
+
+    // 3 orbiting dots at 120° apart, rotating slowly
+    final orbitR  = 20.0;
+    final rotAngle = ring1 * 2 * math.pi;
+    for (int i = 0; i < 3; i++) {
+      final a = rotAngle + i * 2 * math.pi / 3;
+      final dx = cx + orbitR * math.cos(a);
+      final dy = cy + orbitR * math.sin(a);
+      final c  = Color.lerp(_violet, _cyan, i / 2.0)!;
+      canvas.drawCircle(Offset(dx, dy), 2.5,
+          Paint()..color = c.withValues(alpha: 0.8));
+    }
+
+    // Central glowing core
+    final coreR = 7.0 + dotPulse * 2.0;
+    canvas.drawCircle(Offset(cx, cy), coreR * 1.8,
+        Paint()
+          ..color      = _cyan.withValues(alpha: 0.15 + dotPulse * 0.10)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5));
+    canvas.drawCircle(Offset(cx, cy), coreR,
+        Paint()..color = Color.lerp(_violet, _cyan, dotPulse)!);
+  }
+
+  @override
+  bool shouldRepaint(covariant _PulsePainter old) => true;
+}
+
+// ── Cap pill ────────────────────────────────────────────────────
 
 class _CapPill extends StatelessWidget {
   final String text;
@@ -418,14 +526,14 @@ class _NewChatButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFF00C4A8), Color(0xFF008B78)],
+            colors: [Color(0xFF7B2FFE), Color(0xFF00CFDE)],
             begin: Alignment.centerLeft, end: Alignment.centerRight,
           ),
           borderRadius: BorderRadius.circular(14),
-          boxShadow: [
+          boxShadow: const [
             BoxShadow(
-              color: AppColors.teal.withOpacity(0.25),
-              blurRadius: 16, offset: const Offset(0, 4),
+              color: Color(0x407B2FFE),
+              blurRadius: 16, offset: Offset(0, 4),
             ),
           ],
         ),

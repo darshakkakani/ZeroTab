@@ -292,7 +292,7 @@ class _StoryPainter extends CustomPainter {
   });
 
   // Dot travels from ghost (7 o'clock) clockwise to escape (11 o'clock)
-  static const _ghostAngle  = math.pi / 2 + math.pi / 4.2;  // 7 o'clock
+  static const _ghostAngle  = math.pi / 2 + math.pi / 5.5;  // 7 o'clock (mirrors escape)
   static const _escapeAngle = ZeroTabLogoPainter.escapeAngle; // 11 o'clock
   // Clockwise: increase angle (add 2π to escape so it's > ghost)
   static const _escapeFull  = _escapeAngle + math.pi * 2;    // same point, +360°

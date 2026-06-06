@@ -7,6 +7,7 @@ import '../../../core/constants/api_constants.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/widgets/zt_card.dart';
 import '../../../shared/services/providers.dart';
+import '../../../shared/services/providers_refresh.dart';
 import '../../../shared/services/api_service.dart';
 import '../../../shared/models/models.dart';
 import '../widgets/sparkline_chart.dart';
@@ -47,13 +48,7 @@ class HomeScreen extends ConsumerWidget {
               child: Text('Error: $e',
                   style: const TextStyle(color: AppColors.red))),
           data: (summary) => RefreshIndicator(
-            onRefresh: () async {
-              ref.invalidate(financialSummaryProvider);
-              ref.invalidate(snapshotProvider);
-              ref.invalidate(latestInsightProvider);
-              ref.invalidate(accountsProvider);
-              ref.invalidate(mfHoldingsProvider);
-            },
+            onRefresh: () async => refreshAllFinancialData(ref),
             color:           AppColors.accent,
             backgroundColor: AppColors.bg3,
             child: CustomScrollView(
@@ -186,6 +181,60 @@ class HomeScreen extends ConsumerWidget {
                           ),
                           const Icon(Icons.arrow_forward_ios_rounded,
                               size: 13, color: AppColors.text3),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // ── Rupee Decision Engine ────────────────────────────────
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  sliver: SliverToBoxAdapter(
+                    child: GestureDetector(
+                      onTap: () => context.push('/calculator/rupee-decision'),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0x157B2FFE), Color(0x0D00CFDE)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(AppRadius.xl),
+                          border: Border.all(color: const Color(0x287B2FFE)),
+                        ),
+                        child: Row(children: [
+                          Container(
+                            width: 40, height: 40,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF7B2FFE).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(AppRadius.md),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Text('₹?',
+                              style: TextStyle(fontFamily: 'DMMono',
+                                  fontSize: 16, fontWeight: FontWeight.w700,
+                                  color: Color(0xFF7B2FFE))),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Rupee Decision Engine',
+                                  style: TextStyle(fontFamily: 'DMSans',
+                                      fontSize: 13, fontWeight: FontWeight.w600,
+                                      color: AppColors.text)),
+                                SizedBox(height: 2),
+                                Text('Prepay loan or invest? Get the exact answer →',
+                                  style: TextStyle(fontFamily: 'DMSans',
+                                      fontSize: 11, color: Color(0xFF00CFDE))),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.arrow_forward_ios_rounded,
+                              size: 12, color: Color(0xFF7B2FFE)),
                         ]),
                       ),
                     ),

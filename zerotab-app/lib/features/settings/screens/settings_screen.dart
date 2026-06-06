@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/services/providers.dart';
+import '../../../shared/services/providers_refresh.dart';
 import '../../../shared/services/api_service.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../shared/widgets/zt_card.dart';
@@ -117,7 +118,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (confirm == true && mounted) {
       try {
         await api.post(ApiConstants.aaConsentRevoke);
-        ref.invalidate(accountsProvider);
+        refreshAllFinancialData(ref);
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('AA consent revoked'), backgroundColor: AppColors.gold),
         );
@@ -131,10 +132,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _loadDemoData() async {
     try {
       await api.post(ApiConstants.demoSeed);
-      ref.invalidate(accountsProvider);
-      ref.invalidate(financialSummaryProvider);
-      ref.invalidate(snapshotProvider);
-      ref.invalidate(userProfileProvider);
+      refreshAllFinancialData(ref);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sample data loaded — explore away!'), backgroundColor: AppColors.teal),
       );
@@ -157,9 +155,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (confirm != true || !mounted) return;
     try {
       await api.delete(ApiConstants.demoSeed);
-      ref.invalidate(accountsProvider);
-      ref.invalidate(financialSummaryProvider);
-      ref.invalidate(snapshotProvider);
+      refreshAllFinancialData(ref);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Demo data cleared'), backgroundColor: AppColors.gold),
       );

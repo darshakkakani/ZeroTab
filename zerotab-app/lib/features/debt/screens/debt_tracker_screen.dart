@@ -4,6 +4,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/models/models.dart';
 import '../../../shared/services/providers.dart';
+import '../../../shared/services/providers_refresh.dart';
 import '../../../shared/services/api_service.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../shared/widgets/zt_card.dart';
@@ -211,10 +212,7 @@ class _DebtTrackerScreenState extends ConsumerState<DebtTrackerScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _AddLoanSheet(onAdded: () {
-        ref.invalidate(accountsProvider);
-        ref.invalidate(snapshotProvider);
-      }),
+      builder: (_) => _AddLoanSheet(onAdded: () => refreshAllFinancialData(ref)),
     );
   }
 
@@ -223,11 +221,7 @@ class _DebtTrackerScreenState extends ConsumerState<DebtTrackerScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _AddCreditCardSheet(onAdded: () {
-        ref.invalidate(accountsProvider);
-        ref.invalidate(snapshotProvider);
-        ref.invalidate(financialSummaryProvider);
-      }),
+      builder: (_) => _AddCreditCardSheet(onAdded: () => refreshAllFinancialData(ref)),
     );
   }
 
@@ -292,10 +286,7 @@ class _DebtTrackerScreenState extends ConsumerState<DebtTrackerScreen> {
             }
 
             return RefreshIndicator(
-              onRefresh: () async {
-                ref.invalidate(accountsProvider);
-                ref.invalidate(snapshotProvider);
-              },
+              onRefresh: () async => refreshAllFinancialData(ref),
               color: AppColors.accent,
               backgroundColor: AppColors.bg3,
               child: CustomScrollView(

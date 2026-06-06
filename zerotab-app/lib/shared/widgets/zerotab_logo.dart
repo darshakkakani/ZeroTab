@@ -37,7 +37,7 @@ class ZeroTabLogoPainter extends CustomPainter {
   const ZeroTabLogoPainter({this.showBackground = true});
 
   // ── ring geometry (shared with splash animation) ────────────
-  static const escapeAngle = -math.pi / 2 - math.pi / 5.5;
+  static const escapeAngle = -math.pi / 2 + math.pi / 5.5; // 1 o'clock (top-right)
   static const gapHalf     = math.pi / 10.0;   // ~18° gap
   static const arcStart    = escapeAngle + gapHalf;
   static const arcSweep    = math.pi * 2 - gapHalf * 2;
@@ -139,7 +139,7 @@ class ZeroTabLogoPainter extends CustomPainter {
   static void drawGhostDot(
     Canvas canvas, double cx, double cy, double ringR, double w,
     {double alpha = 0.30}) {
-    const a = math.pi / 2 + math.pi / 4.2;
+    const a = math.pi / 2 + math.pi / 5.5; // 7 o'clock (mirrors 1 o'clock escape)
     canvas.drawCircle(
       Offset(cx + ringR * 0.87 * math.cos(a),
              cy + ringR * 0.87 * math.sin(a)),
