@@ -12,7 +12,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'dart:math' as math;
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/models/models.dart';
@@ -939,7 +938,47 @@ class SubscriptionRadar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final subs = _detectSubscriptions();
-    if (subs.isEmpty) return const SizedBox.shrink();
+    if (subs.isEmpty) {
+      return Container(
+        decoration: BoxDecoration(
+          color: AppColors.bg2,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: AppColors.border2),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 11, 14, 9),
+            child: Row(children: [
+              Container(width: 6, height: 6,
+                decoration: const BoxDecoration(color: Color(0xFF7B2FFE), shape: BoxShape.circle)),
+              const SizedBox(width: 8),
+              const Text('SUBSCRIPTION RADAR',
+                style: TextStyle(fontFamily: 'DMSans', fontSize: 10,
+                    fontWeight: FontWeight.w600, letterSpacing: 0.4, color: AppColors.text3)),
+            ]),
+          ),
+          const Divider(color: AppColors.border, height: 1),
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.radar_rounded, color: Color(0xFF7B2FFE), size: 28),
+              const SizedBox(height: 10),
+              const Text('No recurring payments detected yet',
+                style: TextStyle(fontFamily: 'DMSans', fontSize: 13,
+                    fontWeight: FontWeight.w600, color: AppColors.text),
+                textAlign: TextAlign.center),
+              const SizedBox(height: 6),
+              const Text(
+                'Switch to "3M" or "All" period to detect monthly subscriptions.\n'
+                'Subscriptions show up after 2+ payments with the same amount.',
+                style: TextStyle(fontFamily: 'DMSans', fontSize: 11.5,
+                    color: AppColors.text3, height: 1.4),
+                textAlign: TextAlign.center),
+            ]),
+          ),
+        ]),
+      );
+    }
 
     final totalMonthly = subs.fold(0.0, (s, e) => s + e.amount);
 

@@ -314,66 +314,100 @@ Deno.serve(async (req: Request) => {
     if (ue || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }),
       { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
-    const body = await req.json()
+    // Parse body safely
+    let body: Record<string, unknown>
+    try {
+      body = await req.json()
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid request body' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
 
     // Accept pre-extracted text (from Flutter Syncfusion client) OR legacy base64
-    let text: string = body.extracted_text || ''
+    let text: string = (body.extracted_text as string) || ''
+    console.log(`Received extracted_text length: ${text.length}`)
 
-    if (!text) {
-      // Legacy fallback: raw PDF bytes
-      const b64: string = body.file_bytes_b64 || ''
-      if (!b64) return new Response(JSON.stringify({ error: 'No text or file provided' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-      const binStr = atob(b64)
-      const bytes = new Uint8Array(binStr.length)
-      for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i)
-      text = await extractPdfText(bytes)
+    if (!text || text.trim().length < 30) {
+      // Legacy fallback: raw PDF bytes (old client compatibility)
+      const b64: string = (body.file_bytes_b64 as string) || ''
+      if (!b64) {
+        return new Response(JSON.stringify({
+          imported: 0, skipped: 0,
+          error: 'No text content provided. Ensure you are using the latest app version.',
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
+      try {
+        const binStr = atob(b64)
+        const bytes = new Uint8Array(binStr.length)
+        for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i)
+        text = await extractPdfText(bytes)
+      } catch (e) {
+        return new Response(JSON.stringify({ error: `PDF decode error: ${e}` }),
+          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
     }
 
-    console.log(`Text length: ${text.length}, first 300 chars:\n${text.substring(0, 300)}`)
-
-    if (text.trim().length < 30) {
+    if (!text || text.trim().length < 30) {
       return new Response(JSON.stringify({
-        error: 'Could not read text from this PDF. It may be a scanned image. Please use a digital bank statement.',
-      }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        imported: 0, skipped: 0,
+        error: 'No readable text in PDF. Use a digital bank statement (not scanned image).',
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    const rows = text.split('\n').map(r => r.trim()).filter(r => r.length > 5)
-    const parsed = parseRows(rows)
-    console.log(`Parsed ${parsed.length} transactions from ${rows.length} rows`)
-
-    // Log first 5 transactions for debugging
-    for (const t of parsed.slice(0, 5)) {
-      console.log(`  ${t.date} | ${t.type} | ${t.amount} | ${t.description.substring(0, 40)}`)
+    // Parse rows
+    let parsed: ParsedTxn[] = []
+    try {
+      const rows = text.split('\n').map((r: string) => r.trim()).filter((r: string) => r.length > 5)
+      console.log(`Total rows: ${rows.length}, first 3: ${rows.slice(0, 3).join(' | ')}`)
+      parsed = parseRows(rows)
+      console.log(`Parsed ${parsed.length} transactions`)
+    } catch (parseErr) {
+      console.error('Parse error:', parseErr)
+      return new Response(JSON.stringify({ error: `Parse error: ${parseErr}` }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     if (!parsed.length) {
-      // Return the extracted text for debugging
       return new Response(JSON.stringify({
         imported: 0, skipped: 0,
-        debug_rows: rows.slice(0, 20),
+        debug_rows: text.split('\n').slice(0, 15).map((r: string) => r.trim()),
         message: 'No transactions detected. See debug_rows for extracted content.',
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    // Get or create account
-    const { data: accs } = await supabase.from('accounts')
-      .select('id, account_type').eq('user_id', user.id).eq('is_active', true)
-    let accountId: string
-    const bankAcc = accs?.find((a: { account_type: string }) =>
-      ['savings_account','current_account'].includes(a.account_type))
-    if (bankAcc) {
-      accountId = bankAcc.id
-    } else {
-      const { data: na } = await supabase.from('accounts').insert({
-        user_id: user.id, source_type: 'manual',
-        account_type: 'savings_account',
-        institution_name: body.file_name || 'Imported Statement',
-        currency: 'INR', is_active: true,
-      }).select('id').single()
-      if (!na) return new Response(JSON.stringify({ error: 'Account creation failed' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-      accountId = na.id
+    // Get or create account (with full error handling)
+    let accountId: string | null = null
+    try {
+      const { data: accs } = await supabase.from('accounts')
+        .select('id, account_type').eq('user_id', user.id).eq('is_active', true)
+      const bankAcc = (accs || []).find((a: { account_type: string }) =>
+        ['savings_account', 'current_account'].includes(a.account_type))
+      if (bankAcc) {
+        accountId = bankAcc.id
+      } else {
+        const { data: na, error: naErr } = await supabase.from('accounts').insert({
+          user_id: user.id, source_type: 'manual',
+          account_type: 'savings_account',
+          institution_name: (body.file_name as string) || 'Imported Statement',
+          currency: 'INR', is_active: true,
+        }).select('id').single()
+        if (naErr || !na) {
+          console.error('Account creation error:', naErr)
+          // Use first available account as fallback
+          const { data: any } = await supabase.from('accounts')
+            .select('id').eq('user_id', user.id).limit(1).single()
+          accountId = any?.id || null
+        } else {
+          accountId = na.id
+        }
+      }
+    } catch (accErr) {
+      console.error('Account error:', accErr)
+    }
+
+    if (!accountId) {
+      // Insert without account_id — allow null
+      console.warn('No account found, inserting without account link')
     }
 
     // Deduplicate
@@ -386,19 +420,31 @@ Deno.serve(async (req: Request) => {
 
     const toInsert = parsed
       .filter(t => !exSet.has(`${t.date}:${t.amount}:${t.type}`))
-      .map(t => ({
-        user_id: user.id, account_id: accountId,
-        txn_date: t.date, amount: t.amount, type: t.type,
-        description: t.description,
-        merchant: t.description.split(' ').slice(0, 3).join(' '),
-        category: suggestCategory(t.description),
-        source: 'pdf_import',
-      }))
+      .map(t => {
+        const row: Record<string, unknown> = {
+          user_id:     user.id,
+          txn_date:    t.date,
+          amount:      t.amount,
+          type:        t.type,
+          description: t.description.substring(0, 200),
+          merchant:    t.description.split(' ').slice(0, 3).join(' ').substring(0, 80),
+          category:    suggestCategory(t.description),
+          source:      'pdf_import',
+        }
+        if (accountId) row.account_id = accountId
+        return row
+      })
 
+    console.log(`Inserting ${toInsert.length} transactions (skipping ${parsed.length - toInsert.length} duplicates)`)
     let imported = 0, errors = 0
     for (let i = 0; i < toInsert.length; i += 50) {
-      const { error } = await supabase.from('transactions').insert(toInsert.slice(i, i + 50))
-      if (error) errors++; else imported += Math.min(50, toInsert.length - i)
+      const { error: insErr } = await supabase.from('transactions').insert(toInsert.slice(i, i + 50))
+      if (insErr) {
+        console.error('Insert error:', insErr)
+        errors++
+      } else {
+        imported += Math.min(50, toInsert.length - i)
+      }
     }
 
     return new Response(JSON.stringify({

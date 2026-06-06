@@ -255,7 +255,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   _TimePeriod  _period        = _TimePeriod.month;
   bool         _recategorizing = false;
   bool         _importing      = false;
-  final bool _habitsExpanded = true;
 
   static const _chips = [
     ('All',           null),
@@ -1775,7 +1774,8 @@ class _SmartToolsGrid extends StatelessWidget {
         sublabel: topHabit != null
             ? '${topHabit.name}: ${formatInr(topHabit.total, compact: true)}'
             : 'Spending patterns',
-        onTap: habits.isEmpty ? null : () => _openSheet(context, 'Money Habits',
+        // Always tappable — shows empty state if no habits yet
+        onTap: () => _openSheet(context, 'Money Habits',
             _HabitsDetail(habits: habits)),
       ),
     ];
@@ -1888,9 +1888,70 @@ class _HabitsDetail extends StatelessWidget {
   const _HabitsDetail({required this.habits});
 
   @override
-  Widget build(BuildContext context) => MoneyHabitsStrip(
-    habits:   habits,
-    expanded: true,
-    onToggle: () {},
-  );
+  Widget build(BuildContext context) {
+    if (habits.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(Icons.local_fire_department_outlined,
+                color: Color(0xFFF59E0B), size: 32),
+          ),
+          const SizedBox(height: 16),
+          const Text('No spending habits detected yet',
+            style: TextStyle(fontFamily: 'DMSans', fontSize: 15,
+                fontWeight: FontWeight.w700, color: AppColors.text),
+            textAlign: TextAlign.center),
+          const SizedBox(height: 8),
+          const Text(
+            'Habits are merchants you visit 2+ times.\nAdd more transactions or switch to a longer period (3M or All) to see patterns.',
+            style: TextStyle(fontFamily: 'DMSans', fontSize: 12.5,
+                color: AppColors.text3, height: 1.5),
+            textAlign: TextAlign.center),
+        ]),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: habits.map((h) {
+        final color = catColor(h.category);
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withValues(alpha: 0.20)),
+          ),
+          child: Row(children: [
+            Container(width: 4, height: 40,
+              decoration: BoxDecoration(color: color,
+                  borderRadius: BorderRadius.circular(2))),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(h.name, style: TextStyle(fontFamily: 'DMSans', fontSize: 13,
+                  fontWeight: FontWeight.w600, color: color),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text('${h.count} transactions · ${catEmoji(h.category)}',
+                style: const TextStyle(fontFamily: 'DMSans', fontSize: 10.5,
+                    color: AppColors.text3)),
+            ])),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text(formatInr(h.total, compact: true),
+                style: TextStyle(fontFamily: 'DMMono', fontSize: 15,
+                    fontWeight: FontWeight.w700, color: color)),
+              Text('≈ ${formatInr(h.annualCost, compact: true)}/yr',
+                style: TextStyle(fontFamily: 'DMSans', fontSize: 10,
+                    color: color.withValues(alpha: 0.70))),
+            ]),
+          ]),
+        );
+      }).toList(),
+    );
+  }
 }
