@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="/ZeroTab/">
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="ZeroTab — Know where every rupee goes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="ZeroTab">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <title>ZeroTab</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      background-color: #0C0B17;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    #loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+    #loading-logo {
+      width: 64px; height: 64px;
+      background: rgba(123, 95, 255, 0.12);
+      border: 1px solid rgba(123, 95, 255, 0.22);
+      border-radius: 20px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #loading-logo svg { width: 32px; height: 32px; }
+    #loading-text {
+      color: #5E5A75;
+      font-size: 13px;
+      letter-spacing: 0.5px;
+    }
+    #loading-bar {
+      width: 48px; height: 2px;
+      background: #201E38;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    #loading-bar-fill {
+      width: 0%;
+      height: 100%;
+      background: #7B5FFF;
+      border-radius: 2px;
+      animation: loading-anim 1.8s ease-in-out infinite;
+    }
+    @keyframes loading-anim {
+      0%   { width: 0%;   margin-left: 0; }
+      50%  { width: 100%; margin-left: 0; }
+      100% { width: 0%;   margin-left: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div id="loading-logo">
+      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M7 9 H25 L7 23 H25" stroke="#9D8FFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div id="loading-bar"><div id="loading-bar-fill"></div></div>
+  </div>
+
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      var loader = document.getElementById('loading');
+      if (loader) {
+        loader.style.opacity = '0';
+        loader.style.transition = 'opacity 0.3s ease';
+        setTimeout(function() { loader.remove(); }, 350);
+      }
+    });
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
