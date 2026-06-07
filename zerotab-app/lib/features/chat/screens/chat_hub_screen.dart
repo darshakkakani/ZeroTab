@@ -99,12 +99,27 @@ const _promptCategories = [
 ];
 
 // ── Chat Hub Screen ─────────────────────────────────────────────
+// Converted to StatefulWidget so we can detect return from sub-routes
+// and auto-refresh the sessions list without a manual refresh button.
 
-class ChatHubScreen extends ConsumerWidget {
+class ChatHubScreen extends ConsumerStatefulWidget {
   const ChatHubScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ChatHubScreen> createState() => _ChatHubScreenState();
+}
+
+class _ChatHubScreenState extends ConsumerState<ChatHubScreen> {
+
+  // Navigate to a route and refresh sessions list on return.
+  Future<void> _pushAndRefresh(String path) async {
+    await context.push(path);
+    if (!mounted) return;
+    ref.invalidate(chatSessionsProvider);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final sessionsAsync = ref.watch(chatSessionsProvider);
 
     return Scaffold(
@@ -127,7 +142,7 @@ class ChatHubScreen extends ConsumerWidget {
                     const SizedBox(height: 28),
 
                     // ── New chat CTA ────────────────────────
-                    _NewChatButton(onTap: () => context.go('/chat/new')),
+                    _NewChatButton(onTap: () => _pushAndRefresh('/chat/new')),
                     const SizedBox(height: 28),
 
                     // ── Smart prompts ───────────────────────
@@ -150,31 +165,23 @@ class ChatHubScreen extends ConsumerWidget {
                     const SizedBox(height: 14),
                     ..._promptCategories.map((cat) => _PromptCategoryCard(
                       category: cat,
-                      onPromptTap: (prompt) => context.go('/chat/new?q=${Uri.encodeComponent(prompt)}'),
+                      onPromptTap: (prompt) => _pushAndRefresh(
+                          '/chat/new?q=${Uri.encodeComponent(prompt)}'),
                     )),
 
                     const SizedBox(height: 28),
 
                     // ── Chat history ────────────────────────
-                    Row(
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            'Recent Conversations',
-                            style: TextStyle(
-                              fontFamily: 'DMSans', fontSize: 16,
-                              fontWeight: FontWeight.w700, color: AppColors.text,
-                              letterSpacing: -0.3,
-                            ),
-                          ),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Recent Conversations',
+                        style: TextStyle(
+                          fontFamily: 'DMSans', fontSize: 16,
+                          fontWeight: FontWeight.w700, color: AppColors.text,
+                          letterSpacing: -0.3,
                         ),
-                        if (sessionsAsync.valueOrNull?.isNotEmpty == true)
-                          GestureDetector(
-                            onTap: () => ref.invalidate(chatSessionsProvider),
-                            child: const Icon(Icons.refresh_rounded,
-                                color: AppColors.text3, size: 18),
-                          ),
-                      ],
+                      ),
                     ),
                     const SizedBox(height: 12),
                     sessionsAsync.when(
@@ -191,8 +198,9 @@ class ChatHubScreen extends ConsumerWidget {
                           : Column(
                               children: sessions.map((s) => _SessionTile(
                                 session: s,
-                                onTap: () => context.go('/chat/session/${s.id}'),
-                                onDelete: () => _deleteSession(context, ref, s.id),
+                                onTap: () => _pushAndRefresh(
+                                    '/chat/session/${s.id}'),
+                                onDelete: () => _deleteSession(s.id),
                               )).toList(),
                             ),
                     ),
@@ -206,7 +214,7 @@ class ChatHubScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _deleteSession(BuildContext context, WidgetRef ref, String id) async {
+  Future<void> _deleteSession(String id) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -235,7 +243,7 @@ class ChatHubScreen extends ConsumerWidget {
     if (confirmed == true) {
       try {
         await api.delete('${ApiConstants.aiChatSessions}/$id');
-        ref.invalidate(chatSessionsProvider);
+        if (mounted) ref.invalidate(chatSessionsProvider);
       } catch (_) {}
     }
   }

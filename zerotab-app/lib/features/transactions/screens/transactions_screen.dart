@@ -1265,29 +1265,14 @@ class _TransactionList extends StatelessWidget {
     return Column(
       children: groups.entries.map((e) {
         // Date header + day total
-        final dayDebit  = e.value.where((t) => t.isDebit).fold(0.0, (s, t) => s + t.amount);
-        final dayCredit = e.value.where((t) => t.isCredit).fold(0.0, (s, t) => s + t.amount);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
-              child: Row(children: [
-                Text(e.key, style: const TextStyle(
-                  fontFamily: 'DMSans', fontSize: 11, fontWeight: FontWeight.w600,
-                  letterSpacing: 0.2, color: AppColors.text3)),
-                const Spacer(),
-                if (dayDebit > 0)
-                  Text('−${formatInr(dayDebit, compact: true)}',
-                    style: const TextStyle(fontFamily: 'DMMono', fontSize: 11,
-                      color: AppColors.coral, fontWeight: FontWeight.w500)),
-                if (dayDebit > 0 && dayCredit > 0)
-                  const Text('  ·  ', style: TextStyle(color: AppColors.text3, fontSize: 11)),
-                if (dayCredit > 0)
-                  Text('+${formatInr(dayCredit, compact: true)}',
-                    style: const TextStyle(fontFamily: 'DMMono', fontSize: 11,
-                      color: AppColors.green, fontWeight: FontWeight.w500)),
-              ]),
+              child: Text(e.key, style: const TextStyle(
+                fontFamily: 'DMSans', fontSize: 11, fontWeight: FontWeight.w600,
+                letterSpacing: 0.2, color: AppColors.text3)),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
