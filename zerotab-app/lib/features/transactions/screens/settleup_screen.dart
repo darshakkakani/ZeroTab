@@ -475,6 +475,7 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                         totalOwe: _totalOwe,
                         onRefresh: _loadSplits,
                         onSettle: _settleAll,
+                        onDelete: _deleteSplit,
                         onAddSplit: _showAddSplit,
                         currentUid: _uid,
                       ),
@@ -533,6 +534,18 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
     } catch (e) {
       debugPrint('settle error: $e');
     }
+  }
+
+  // ── Delete a single split entry ───────────────────────────────
+  Future<void> _deleteSplit(String splitId) async {
+    try {
+      await _db.from('settle_splits').delete().eq('id', splitId);
+    } catch (_) {
+      // Fallback: remove from local list
+      if (mounted) setState(() => _splits.removeWhere((s) => s.id == splitId));
+    }
+    await _loadSplits();
+    if (mounted) setState(() {});
   }
 }
 
@@ -663,24 +676,32 @@ String _categoryEmoji(String cat) {
 //  FRIENDS TAB (individual splits)
 // ════════════════════════════════════════════════════════════════
 
-class _FriendsTab extends StatelessWidget {
+class _FriendsTab extends StatefulWidget {
   final List<IndividualSplit> splits;
   final Map<String, int> netBalances;
   final int totalOwed, totalOwe;
   final Future<void> Function() onRefresh;
   final Future<void> Function(String friendName) onSettle;
+  final Future<void> Function(String splitId) onDelete;
   final VoidCallback onAddSplit;
   final String currentUid;
   const _FriendsTab({
     required this.splits, required this.netBalances,
     required this.totalOwed, required this.totalOwe,
     required this.onRefresh, required this.onSettle,
+    required this.onDelete,
     required this.onAddSplit, required this.currentUid,
   });
+  @override
+  State<_FriendsTab> createState() => _FriendsTabState();
+}
+
+class _FriendsTabState extends State<_FriendsTab> {
+  String? _expandedFriend;
 
   @override
   Widget build(BuildContext context) {
-    if (netBalances.isEmpty) {
+    if (widget.netBalances.isEmpty) {
       return Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         Container(
           padding: const EdgeInsets.all(18),
@@ -702,7 +723,7 @@ class _FriendsTab extends StatelessWidget {
           textAlign: TextAlign.center),
         const SizedBox(height: 24),
         GestureDetector(
-          onTap: onAddSplit,
+          onTap: widget.onAddSplit,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             decoration: BoxDecoration(
@@ -721,8 +742,8 @@ class _FriendsTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
       children: [
-        // Summary bar
-        if (totalOwed > 0 || totalOwe > 0)
+        // ── Summary bar ───────────────────────────────────────
+        if (widget.totalOwed > 0 || widget.totalOwe > 0)
           Container(
             margin: const EdgeInsets.only(bottom: 14),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -734,23 +755,23 @@ class _FriendsTab extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                if (totalOwed > 0) Column(children: [
+                if (widget.totalOwed > 0) Column(children: [
                   const Text('You\'re owed', style: TextStyle(
                       fontFamily: 'DMSans', fontSize: 10.5,
                       color: AppColors.text3)),
                   const SizedBox(height: 3),
-                  Text(fmtP(totalOwed), style: const TextStyle(
+                  Text(fmtP(widget.totalOwed), style: const TextStyle(
                     fontFamily: 'DMMono', fontSize: 17,
                     fontWeight: FontWeight.w700, color: Color(0xFF22C55E))),
                 ]),
-                if (totalOwed > 0 && totalOwe > 0)
+                if (widget.totalOwed > 0 && widget.totalOwe > 0)
                   Container(width: 1, height: 30, color: AppColors.border),
-                if (totalOwe > 0) Column(children: [
+                if (widget.totalOwe > 0) Column(children: [
                   const Text('You owe', style: TextStyle(
                       fontFamily: 'DMSans', fontSize: 10.5,
                       color: AppColors.text3)),
                   const SizedBox(height: 3),
-                  Text(fmtP(totalOwe), style: const TextStyle(
+                  Text(fmtP(widget.totalOwe), style: const TextStyle(
                     fontFamily: 'DMMono', fontSize: 17,
                     fontWeight: FontWeight.w700, color: Color(0xFFEF4444))),
                 ]),
@@ -758,79 +779,204 @@ class _FriendsTab extends StatelessWidget {
             ),
           ),
 
-        // Friend balance cards
-        ...netBalances.entries.map((e) {
-          final theyOweYou = e.value > 0;
-          final color = theyOweYou
+        // ── Friend balance cards with expandable split detail ──
+        ...widget.netBalances.entries.map((e) {
+          final friendName   = e.key;
+          final theyOweYou   = e.value > 0;
+          final color        = theyOweYou
               ? const Color(0xFF22C55E) : const Color(0xFFEF4444);
-          final relatedSplits = splits
+          final relatedSplits = widget.splits
               .where((s) => s.participantName.toLowerCase()
-                  == e.key.toLowerCase())
+                  == friendName.toLowerCase())
               .toList();
+          final isExpanded = _expandedFriend == friendName;
 
-          return Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: color.withValues(alpha: 0.20)),
-            ),
-            child: Row(children: [
-              Container(
-                width: 42, height: 42,
+          return Column(children: [
+            // ── Friend summary row ─────────────────────────
+            GestureDetector(
+              onTap: () => setState(() =>
+                  _expandedFriend = isExpanded ? null : friendName),
+              child: Container(
+                margin: EdgeInsets.only(bottom: isExpanded ? 0 : 10),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [
-                    color.withValues(alpha: 0.20),
-                    color.withValues(alpha: 0.10),
-                  ]),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: color.withValues(alpha: 0.30)),
-                ),
-                alignment: Alignment.center,
-                child: Text(e.key[0].toUpperCase(), style: TextStyle(
-                  fontFamily: 'DMSans', fontSize: 16,
-                  fontWeight: FontWeight.w700, color: color)),
-              ),
-              const SizedBox(width: 12),
-              Expanded(child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(e.key, style: const TextStyle(
-                    fontFamily: 'DMSans', fontSize: 14,
-                    fontWeight: FontWeight.w600, color: AppColors.text)),
-                  Text(
-                    theyOweYou
-                        ? 'owes you · ${relatedSplits.length} split${relatedSplits.length > 1 ? "s" : ""}'
-                        : 'you owe · ${relatedSplits.length} split${relatedSplits.length > 1 ? "s" : ""}',
-                    style: TextStyle(fontFamily: 'DMSans',
-                        fontSize: 11, color: color)),
-                ],
-              )),
-              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text(fmtP(e.value.abs()), style: TextStyle(
-                  fontFamily: 'DMMono', fontSize: 17,
-                  fontWeight: FontWeight.w700, color: color)),
-                const SizedBox(height: 6),
-                GestureDetector(
-                  onTap: () => onSettle(e.key),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                          color: color.withValues(alpha: 0.30)),
-                    ),
-                    child: Text('Settle', style: TextStyle(
-                      fontFamily: 'DMSans', fontSize: 10.5,
-                      fontWeight: FontWeight.w600, color: color)),
+                  color: color.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.only(
+                    topLeft:     const Radius.circular(14),
+                    topRight:    const Radius.circular(14),
+                    bottomLeft:  Radius.circular(isExpanded ? 0 : 14),
+                    bottomRight: Radius.circular(isExpanded ? 0 : 14),
                   ),
+                  border: Border.all(color: color.withValues(alpha: 0.20)),
                 ),
-              ]),
-            ]),
-          );
+                child: Row(children: [
+                  Container(
+                    width: 40, height: 40,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [
+                        color.withValues(alpha: 0.20),
+                        color.withValues(alpha: 0.10),
+                      ]),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: color.withValues(alpha: 0.30)),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(friendName[0].toUpperCase(),
+                        style: TextStyle(fontFamily: 'DMSans', fontSize: 16,
+                            fontWeight: FontWeight.w700, color: color)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(friendName, style: const TextStyle(
+                        fontFamily: 'DMSans', fontSize: 14,
+                        fontWeight: FontWeight.w600, color: AppColors.text)),
+                      Text(
+                        theyOweYou
+                            ? 'owes you · ${relatedSplits.length} split${relatedSplits.length > 1 ? "s" : ""}'
+                            : 'you owe · ${relatedSplits.length} split${relatedSplits.length > 1 ? "s" : ""}',
+                        style: TextStyle(fontFamily: 'DMSans',
+                            fontSize: 11, color: color)),
+                    ],
+                  )),
+                  Text(fmtP(e.value.abs()), style: TextStyle(
+                    fontFamily: 'DMMono', fontSize: 17,
+                    fontWeight: FontWeight.w700, color: color)),
+                  const SizedBox(width: 8),
+                  Column(children: [
+                    GestureDetector(
+                      onTap: () => widget.onSettle(friendName),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 9, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF22C55E).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                              color: const Color(0xFF22C55E)
+                                  .withValues(alpha: 0.30)),
+                        ),
+                        child: const Text('Settle',
+                          style: TextStyle(fontFamily: 'DMSans', fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF22C55E))),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Icon(
+                      isExpanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      color: color.withValues(alpha: 0.60), size: 16),
+                  ]),
+                ]),
+              ),
+            ),
+
+            // ── Expandable individual split entries with delete ──
+            if (isExpanded) Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              decoration: BoxDecoration(
+                color: AppColors.bg3,
+                borderRadius: const BorderRadius.only(
+                  bottomLeft:  Radius.circular(14),
+                  bottomRight: Radius.circular(14),
+                ),
+                border: Border.all(color: color.withValues(alpha: 0.20)),
+              ),
+              child: Column(
+                children: relatedSplits.asMap().entries.map((entry) {
+                  final idx = entry.key;
+                  final split = entry.value;
+                  return Column(children: [
+                    Dismissible(
+                      key: Key('split-${split.id}'),
+                      direction: DismissDirection.endToStart,
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 16),
+                        color: AppColors.red.withValues(alpha: 0.10),
+                        child: const Icon(Icons.delete_outline_rounded,
+                            color: AppColors.red, size: 18),
+                      ),
+                      confirmDismiss: (_) async {
+                        return await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            backgroundColor: AppColors.bg2,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                side: const BorderSide(color: AppColors.border2)),
+                            title: const Text('Delete this split?',
+                              style: TextStyle(fontFamily: 'DMSans',
+                                  fontSize: 15, fontWeight: FontWeight.w600,
+                                  color: AppColors.text)),
+                            content: Text(
+                              '${split.description} · ${fmtPFull(split.amount)}',
+                              style: const TextStyle(fontFamily: 'DMSans',
+                                  fontSize: 13, color: AppColors.text2)),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Cancel',
+                                    style: TextStyle(color: AppColors.text2))),
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text('Delete',
+                                    style: TextStyle(color: AppColors.red,
+                                        fontWeight: FontWeight.w600))),
+                            ],
+                          ),
+                        ) ?? false;
+                      },
+                      onDismissed: (_) => widget.onDelete(split.id),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                        child: Row(children: [
+                          Icon(
+                            split.youOwe
+                                ? Icons.arrow_upward_rounded
+                                : Icons.arrow_downward_rounded,
+                            color: split.youOwe
+                                ? const Color(0xFFEF4444)
+                                : const Color(0xFF22C55E),
+                            size: 14),
+                          const SizedBox(width: 10),
+                          Expanded(child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(split.description.isEmpty
+                                  ? 'Shared expense' : split.description,
+                                style: const TextStyle(fontFamily: 'DMSans',
+                                    fontSize: 12.5, fontWeight: FontWeight.w500,
+                                    color: AppColors.text)),
+                              Text(split.splitDate.toString().split(' ').first,
+                                style: const TextStyle(fontFamily: 'DMSans',
+                                    fontSize: 10, color: AppColors.text3)),
+                            ],
+                          )),
+                          Text(fmtPFull(split.amount),
+                            style: TextStyle(
+                              fontFamily: 'DMMono', fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: split.youOwe
+                                  ? const Color(0xFFEF4444)
+                                  : const Color(0xFF22C55E))),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.swipe_left_rounded,
+                              size: 12, color: AppColors.text3),
+                        ]),
+                      ),
+                    ),
+                    if (idx < relatedSplits.length - 1)
+                      const Divider(
+                          color: AppColors.border, height: 1, indent: 38),
+                  ]);
+                }).toList(),
+              ),
+            ),
+          ]);
         }),
       ],
     );

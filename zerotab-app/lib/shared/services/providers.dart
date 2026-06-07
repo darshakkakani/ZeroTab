@@ -129,6 +129,30 @@ final transactionsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   return res.data as Map<String, dynamic>;
 });
 
+// ── Period-only transactions (no category/search filter) ─────
+// Used by smart tools (FlowCast, Radar, Patterns) so that selecting
+// the "Food" category filter on the list doesn't zero out other envelopes.
+final periodOnlyTransactionsProvider =
+    FutureProvider<List<TransactionModel>>((ref) async {
+  final user   = ref.watch(currentUserProvider);
+  final params = ref.watch(transactionParamsProvider);
+  if (user == null) return [];
+  try {
+    final res = await api.get(ApiConstants.transactions, params: {
+      if (params.from != null) 'from': params.from,
+      if (params.to   != null) 'to':   params.to,
+      'limit': 500,
+    });
+    final list =
+        ((res.data as Map<String, dynamic>)['data'] as List? ?? []);
+    return list
+        .map((e) => TransactionModel.fromJson(e as Map<String, dynamic>))
+        .toList();
+  } catch (_) {
+    return [];
+  }
+});
+
 // ── Transaction summary (category totals for current month) ──
 
 final txnSummaryProvider = FutureProvider.family<Map<String, dynamic>, String>(

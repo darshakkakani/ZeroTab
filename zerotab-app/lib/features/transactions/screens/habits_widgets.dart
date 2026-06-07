@@ -247,6 +247,44 @@ class BudgetBrainCard extends StatelessWidget {
           Text(formatInr(budget, compact: true),
             style: const TextStyle(fontFamily: 'DMMono', fontSize: 9, color: AppColors.text3)),
         ]),
+
+        // ── Row 4: Net savings + transaction count ──────────────
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(children: [
+              Icon(Icons.savings_outlined, size: 13,
+                  color: accent.withValues(alpha: 0.70)),
+              const SizedBox(width: 5),
+              Text('Net saved: ', style: TextStyle(fontFamily: 'DMSans',
+                  fontSize: 9.5, color: accent.withValues(alpha: 0.70))),
+              Text(formatInr((income - fixedCommit - spent).clamp(-double.infinity, double.infinity),
+                    compact: true),
+                style: TextStyle(fontFamily: 'DMMono', fontSize: 11,
+                    fontWeight: FontWeight.w700, color: accent)),
+            ]),
+          )),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(children: [
+              Icon(Icons.receipt_long_outlined, size: 13,
+                  color: accent.withValues(alpha: 0.70)),
+              const SizedBox(width: 5),
+              Text('${txns.length} txns', style: TextStyle(fontFamily: 'DMMono',
+                  fontSize: 11, fontWeight: FontWeight.w700, color: accent)),
+            ]),
+          ),
+        ]),
       ]),
     );
   }
@@ -1326,17 +1364,20 @@ class BillRadar extends StatelessWidget {
 
       final amounts = txns.map((t) => t.amount).toList()..sort();
       final base    = amounts.first;
-      if (!amounts.every((a) => (a - base).abs() / base.clamp(1, double.infinity) < 0.08)) continue;
+      // Allow 15% variation in amount to handle varying bills
+      if (!amounts.every((a) =>
+          (a - base).abs() / base.clamp(1, double.infinity) < 0.15)) continue;
 
       final dates = txns.map((t) => t.txnDate).toList()..sort();
+      // Detect weekly (5-9d), bi-weekly (12-18d), monthly (20-45d),
+      // quarterly (75-105d) — wide bands for demo data tolerance
       int? gapDays;
       for (int i = 1; i < dates.length; i++) {
         final diff = dates[i].difference(dates[i - 1]).inDays;
-        if ((diff >= 25 && diff <= 35) || (diff >= 6 && diff <= 8) ||
-            (diff >= 85 && diff <= 95)) {
-          gapDays = diff;
-          break;
-        }
+        if (diff >= 5 && diff <= 9)   { gapDays = 7;  break; }
+        if (diff >= 12 && diff <= 18) { gapDays = 14; break; }
+        if (diff >= 20 && diff <= 45) { gapDays = 30; break; }
+        if (diff >= 75 && diff <= 105){ gapDays = 90; break; }
       }
       if (gapDays == null) continue;
 

@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'habits_widgets.dart';
 import 'settleup_screen.dart';
 import 'package:flutter/material.dart';
@@ -256,6 +257,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   _TimePeriod  _period        = _TimePeriod.month;
   bool         _importing      = false;
 
+  // Supabase Realtime channel — auto-refreshes Spend page when any
+  // transaction is inserted/updated/deleted (e.g. after demo seed).
+  RealtimeChannel? _txnChannel;
+
   static const _chips = [
     ('All',           null),
     ('Food',          'food_delivery'),
@@ -272,9 +277,38 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _subscribeTransactionChanges();
+  }
+
+  @override
   void dispose() {
     _searchCtrl.dispose();
+    if (_txnChannel != null) {
+      Supabase.instance.client.removeChannel(_txnChannel!);
+    }
     super.dispose();
+  }
+
+  // Subscribe to Supabase Realtime so the Spend page auto-updates
+  // whenever demo data is seeded or transactions change from another device.
+  void _subscribeTransactionChanges() {
+    _txnChannel = Supabase.instance.client
+        .channel('spend-txn-changes')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'transactions',
+          callback: (_) {
+            if (!mounted) return;
+            ref.invalidate(transactionsProvider);
+            ref.invalidate(periodOnlyTransactionsProvider);
+            ref.invalidate(snapshotProvider);
+            ref.invalidate(financialSummaryProvider);
+          },
+        )
+        .subscribe();
   }
 
   void _applyPeriod(_TimePeriod p) {
@@ -688,96 +722,46 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
             SliverToBoxAdapter(child: const SizedBox(height: 12)),
 
-            // ── Budget Brain: The #1 number users need ────
+            // ── Budget Brain ─────────────────────────────
+            // Single source of truth for the period overview.
+            // Net savings and transaction count are shown here
+            // so we don't repeat them again below.
             SliverToBoxAdapter(child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: BudgetBrainCard(
-                snapshot: snapAsync.value,
-                onImport:  _importBankStatement,
-                importing: _importing,
-                txns: txnAsync.valueOrNull != null
-                    ? (txnAsync.valueOrNull!['data'] as List? ?? [])
-                        .map((e) => TransactionModel.fromJson(e as Map<String, dynamic>))
-                        .toList()
-                    : const [],
-              ),
+              child: Builder(builder: (ctx) {
+                // Use period-only txns so the card is never affected
+                // by the category/search filter on the list below.
+                final periodTxns = ref
+                    .watch(periodOnlyTransactionsProvider)
+                    .valueOrNull ?? [];
+                return BudgetBrainCard(
+                  snapshot: snapAsync.value,
+                  onImport:  _importBankStatement,
+                  importing: _importing,
+                  txns: periodTxns,
+                );
+              }),
             )),
 
             SliverToBoxAdapter(child: const SizedBox(height: 10)),
 
-            // ── Spending summary: 2×2 premium grid ───────
-            SliverToBoxAdapter(child: txnAsync.when(
-              loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
-              data: (data) {
-                final txns = (data['data'] as List? ?? [])
-                    .map((e) => TransactionModel.fromJson(e as Map<String, dynamic>))
-                    .toList();
-                if (txns.isEmpty) return const SizedBox.shrink();
-                final totalDebit  = txns.where((t) => t.isDebit).fold(0.0, (s, t) => s + t.amount);
-                final totalCredit = txns.where((t) => t.isCredit).fold(0.0, (s, t) => s + t.amount);
-                final net = totalCredit - totalDebit;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(children: [
-                    Row(children: [
-                      _SummaryBox(
-                        label: 'Spent',
-                        value: '−${formatInr(totalDebit, compact: true)}',
-                        sub: 'This period',
-                        color: AppColors.coral,
-                      ),
-                      const SizedBox(width: 8),
-                      _SummaryBox(
-                        label: 'Income',
-                        value: '+${formatInr(totalCredit, compact: true)}',
-                        sub: 'Received',
-                        color: AppColors.green,
-                      ),
-                    ]),
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      _SummaryBox(
-                        label: 'Net',
-                        value: '${net >= 0 ? '+' : '−'}${formatInr(net.abs(), compact: true)}',
-                        sub: net >= 0 ? 'Saved' : 'Deficit',
-                        color: net >= 0 ? AppColors.green : AppColors.coral,
-                      ),
-                      const SizedBox(width: 8),
-                      _SummaryBox(
-                        label: 'Count',
-                        value: '${txns.length}',
-                        sub: 'Transactions',
-                        color: AppColors.accent2,
-                      ),
-                    ]),
-                  ]),
-                );
-              },
-            )),
-
-            SliverToBoxAdapter(child: const SizedBox(height: 10)),
-
-            // ── Smart Tools — 4 compact tappable cards ───
-            // Envelopes | Splits | Subscriptions | Habits
-            // Each opens a bottom sheet — keeps main view compact
-            SliverToBoxAdapter(child: txnAsync.when(
-              loading: () => const SizedBox.shrink(),
-              error:   (_, __) => const SizedBox.shrink(),
-              data:    (data) {
-                final txns = (data['data'] as List? ?? [])
-                    .map((e) => TransactionModel.fromJson(e as Map<String, dynamic>))
-                    .toList();
-                final habits = _detectHabits(txns.where((t) => t.isDebit).toList());
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: _SmartToolsGrid(
-                    txns:   txns,
-                    habits: habits,
-                  ),
-                );
-              },
-            )),
+            // ── Money Intelligence — 4 tools ─────────────
+            // Always uses period-only (unfiltered) transactions so
+            // FlowCast/Radar/Patterns are never zeroed by a category filter.
+            SliverToBoxAdapter(child: Builder(builder: (ctx) {
+              final periodTxns = ref
+                  .watch(periodOnlyTransactionsProvider)
+                  .valueOrNull ?? [];
+              final habits = _detectHabits(
+                  periodTxns.where((t) => t.isDebit).toList());
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _SmartToolsGrid(
+                  txns:   periodTxns,
+                  habits: habits,
+                ),
+              );
+            })),
 
             SliverToBoxAdapter(child: const SizedBox(height: 10)),
 
@@ -927,44 +911,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   );
 }
 
-// ── Summary box (2×2 grid tile) ──────────────────────────────
-
-class _SummaryBox extends StatelessWidget {
-  final String label, value, sub;
-  final Color  color;
-  const _SummaryBox({
-    required this.label,
-    required this.value,
-    required this.sub,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) => Expanded(
-    child: Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: color.withValues(alpha: 0.16)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: const TextStyle(
-          fontFamily: 'DMSans', fontSize: 10.5,
-          fontWeight: FontWeight.w500, color: AppColors.text3,
-          letterSpacing: 0.1)),
-        const SizedBox(height: 5),
-        Text(value, style: TextStyle(
-          fontFamily: 'DMMono', fontSize: 19,
-          fontWeight: FontWeight.w700, color: color, letterSpacing: -0.5)),
-        const SizedBox(height: 2),
-        Text(sub, style: TextStyle(
-          fontFamily: 'DMSans', fontSize: 10,
-          color: color.withValues(alpha: 0.55))),
-      ]),
-    ),
-  );
-}
 
 // ── Add Transaction Bottom Sheet ─────────────────────────────
 
@@ -2025,27 +1971,48 @@ class _HabitsDetail extends StatelessWidget {
       ],
 
       // ── Habit list with annual comparisons ──────────────────
-      if (habits.isEmpty)
-        Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(children: [
-            const Icon(Icons.insights_rounded,
-                color: Color(0xFFF59E0B), size: 32),
-            const SizedBox(height: 12),
-            const Text('No patterns yet',
-              style: TextStyle(fontFamily: 'DMSans', fontSize: 15,
-                  fontWeight: FontWeight.w700, color: AppColors.text),
-              textAlign: TextAlign.center),
-            const SizedBox(height: 6),
-            const Text(
-              'Add more transactions or switch to 3M / All\n'
-              'to see which habits cost you the most annually.',
-              style: TextStyle(fontFamily: 'DMSans', fontSize: 12.5,
-                  color: AppColors.text3, height: 1.5),
-              textAlign: TextAlign.center),
-          ]),
+      // Only show the "no patterns" empty state when NEITHER time/day
+      // charts nor habit cards have data — not when charts show data.
+      if (habits.isEmpty && maxTime == 0 && maxDay == 0)
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.insights_rounded,
+                  color: Color(0xFFF59E0B), size: 32),
+              const SizedBox(height: 12),
+              const Text('No patterns yet',
+                style: TextStyle(fontFamily: 'DMSans', fontSize: 15,
+                    fontWeight: FontWeight.w700, color: AppColors.text),
+                textAlign: TextAlign.center),
+              const SizedBox(height: 6),
+              const Text(
+                'Add more transactions or switch to 3M / All\n'
+                'to see which habits cost you the most annually.',
+                style: TextStyle(fontFamily: 'DMSans', fontSize: 12.5,
+                    color: AppColors.text3, height: 1.5),
+                textAlign: TextAlign.center),
+            ]),
+          ),
         )
-      else ...[
+      else if (habits.isEmpty) ...[
+        // Time/day charts showed data but no repeat merchants yet
+        Container(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          decoration: BoxDecoration(color: AppColors.bg2,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(color: AppColors.border)),
+          child: Row(children: [
+            const Icon(Icons.tips_and_updates_outlined,
+                color: Color(0xFFF59E0B), size: 16),
+            const SizedBox(width: 8),
+            const Expanded(child: Text(
+              'Visit any merchant 2+ times to see spending habit cards here.',
+              style: TextStyle(fontFamily: 'DMSans', fontSize: 11.5,
+                  color: AppColors.text3, height: 1.4))),
+          ]),
+        ),
+      ] else ...[
         Container(
           padding: const EdgeInsets.fromLTRB(14, 11, 14, 0),
           decoration: BoxDecoration(
