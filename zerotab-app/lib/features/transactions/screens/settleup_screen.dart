@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 
@@ -25,11 +26,12 @@ class SettleGroup {
   final String? description, createdBy;
   final bool isArchived;
   final DateTime createdAt;
+  final int budgetAmount; // paise — 0 = no budget set
   const SettleGroup({
     required this.id, required this.name, required this.currency,
     required this.category, required this.coverColor,
     this.description, this.createdBy, this.isArchived = false,
-    required this.createdAt,
+    required this.createdAt, this.budgetAmount = 0,
   });
   factory SettleGroup.fromJson(Map<String, dynamic> j) => SettleGroup(
     id: j['id'] as String,
@@ -41,7 +43,9 @@ class SettleGroup {
     createdBy: j['created_by'] as String?,
     isArchived: (j['is_archived'] as bool?) ?? false,
     createdAt: DateTime.parse(j['created_at'] as String),
+    budgetAmount: (j['budget_amount'] as int?) ?? 0,
   );
+  bool get hasBudget => budgetAmount > 0;
 }
 
 class GroupMember {
@@ -382,6 +386,11 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Net position across ALL groups + friends
+    final allOwed = _totalOwed;
+    final allOwe  = _totalOwe;
+    final netAll  = allOwed - allOwe;
+
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: SafeArea(
@@ -395,11 +404,16 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                 child: const Icon(Icons.arrow_back_rounded,
                     color: AppColors.text2, size: 22),
               ),
-              const SizedBox(width: 14),
-              const Text('SettleUp', style: TextStyle(
-                fontFamily: 'DMSans', fontSize: 22,
-                fontWeight: FontWeight.w700, letterSpacing: -0.6,
-                color: AppColors.text)),
+              const SizedBox(width: 12),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Hisaab', style: TextStyle(
+                  fontFamily: 'DMSans', fontSize: 22,
+                  fontWeight: FontWeight.w700, letterSpacing: -0.6,
+                  color: AppColors.text)),
+                const Text('hisaab karo, aage badho',
+                  style: TextStyle(fontFamily: 'DMSans', fontSize: 9,
+                      color: AppColors.text3)),
+              ]),
               const Spacer(),
               GestureDetector(
                 onTap: _tab.index == 0 ? _showCreateGroup : _showAddSplit,
@@ -410,14 +424,16 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                     gradient: const LinearGradient(colors: [
                       Color(0xFF22C55E), Color(0xFF00C4A8)]),
                     borderRadius: BorderRadius.circular(20),
+                    boxShadow: [BoxShadow(
+                      color: const Color(0xFF22C55E).withValues(alpha: 0.35),
+                      blurRadius: 10, offset: const Offset(0, 3))],
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.add_rounded,
-                        color: Colors.white, size: 16),
+                    const Icon(Icons.add_rounded, color: Colors.white, size: 16),
                     const SizedBox(width: 4),
-                    Text(_tab.index == 0 ? 'Group' : 'Split',
+                    Text(_tab.index == 0 ? 'New Group' : 'New Split',
                       style: const TextStyle(fontFamily: 'DMSans',
-                          fontSize: 12, fontWeight: FontWeight.w700,
+                          fontSize: 11.5, fontWeight: FontWeight.w700,
                           color: Colors.white)),
                   ]),
                 ),
@@ -425,7 +441,94 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
             ]),
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
+
+          // ── Net balance hero card ────────────────────────────
+          if (!_loading && (allOwed > 0 || allOwe > 0))
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: netAll >= 0
+                        ? [const Color(0xFF0D2218), const Color(0xFF080E0C)]
+                        : [const Color(0xFF200A0A), const Color(0xFF0C0606)],
+                    begin: Alignment.topLeft, end: Alignment.bottomRight),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: netAll >= 0
+                      ? const Color(0xFF22C55E).withValues(alpha: 0.25)
+                      : const Color(0xFFEF4444).withValues(alpha: 0.25)),
+                ),
+                child: Row(children: [
+                  // Left: owed
+                  if (allOwed > 0) Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('YOU\'RE OWED', style: TextStyle(
+                          fontFamily: 'DMSans', fontSize: 9, letterSpacing: 0.4,
+                          color: AppColors.text3)),
+                      const SizedBox(height: 3),
+                      Text('+${fmtP(allOwed)}', style: const TextStyle(
+                          fontFamily: 'DMMono', fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF22C55E), letterSpacing: -0.5)),
+                    ],
+                  )),
+                  if (allOwed > 0 && allOwe > 0)
+                    Container(width: 1, height: 36,
+                        color: AppColors.border),
+                  // Right: you owe
+                  if (allOwe > 0) Expanded(child: Padding(
+                    padding: EdgeInsets.only(left: allOwed > 0 ? 12 : 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('YOU OWE', style: TextStyle(
+                            fontFamily: 'DMSans', fontSize: 9,
+                            letterSpacing: 0.4, color: AppColors.text3)),
+                        const SizedBox(height: 3),
+                        Text('−${fmtP(allOwe)}', style: const TextStyle(
+                            fontFamily: 'DMMono', fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFFEF4444), letterSpacing: -0.5)),
+                      ],
+                    ),
+                  )),
+                  const Spacer(),
+                  // Net badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: netAll >= 0
+                          ? const Color(0xFF22C55E).withValues(alpha: 0.12)
+                          : const Color(0xFFEF4444).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color: netAll >= 0
+                              ? const Color(0xFF22C55E).withValues(alpha: 0.30)
+                              : const Color(0xFFEF4444).withValues(alpha: 0.30)),
+                    ),
+                    child: Column(children: [
+                      Text(
+                        netAll >= 0 ? '+${fmtP(netAll)}' : '−${fmtP(netAll.abs())}',
+                        style: TextStyle(fontFamily: 'DMMono', fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: netAll >= 0
+                              ? const Color(0xFF22C55E)
+                              : const Color(0xFFEF4444))),
+                      Text('net', style: const TextStyle(
+                          fontFamily: 'DMSans', fontSize: 9,
+                          color: AppColors.text3)),
+                    ]),
+                  ),
+                ]),
+              ),
+            ),
+
+          if (!_loading && (allOwed > 0 || allOwe > 0))
+            const SizedBox(height: 10),
 
           // ── Tab bar ─────────────────────────────────────────
           Padding(
@@ -453,15 +556,15 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                     fontFamily: 'DMSans', fontSize: 12),
                 labelColor: Colors.white,
                 unselectedLabelColor: AppColors.text2,
-                tabs: const [
-                  Tab(text: 'Groups'),
-                  Tab(text: 'Friends'),
+                tabs: [
+                  Tab(text: 'Groups (${_groups.length})'),
+                  const Tab(text: 'Friends'),
                 ],
               ),
             ),
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
           // ── Tab views ───────────────────────────────────────
           Expanded(
@@ -605,29 +708,67 @@ class _GroupsTab extends StatelessWidget {
   }
 }
 
-class _GroupTile extends StatelessWidget {
+class _GroupTile extends StatefulWidget {
   final SettleGroup group;
   final String currentUid;
   final VoidCallback onRefresh;
   const _GroupTile({
     required this.group, required this.currentUid, required this.onRefresh});
+  @override
+  State<_GroupTile> createState() => _GroupTileState();
+}
+
+class _GroupTileState extends State<_GroupTile> {
+  int _totalSpent = 0;
+  int _memberCount = 0;
+  bool _loaded = false;
 
   Color get _color {
     try {
-      final hex = group.coverColor.replaceAll('#', '');
+      final hex = widget.group.coverColor.replaceAll('#', '');
       return Color(int.parse('FF$hex', radix: 16));
-    } catch (_) {
-      return const Color(0xFF7B2FFE);
-    }
+    } catch (_) { return const Color(0xFF7B2FFE); }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGroupStats();
+  }
+
+  Future<void> _loadGroupStats() async {
+    try {
+      final [expenses, members] = await Future.wait([
+        _db.from('settle_expenses').select('amount')
+            .eq('group_id', widget.group.id)
+            .eq('is_settlement', false),
+        _db.from('settle_group_members').select('id')
+            .eq('group_id', widget.group.id),
+      ]);
+      final spent = (expenses as List)
+          .fold<int>(0, (s, r) => s + ((r['amount'] as int?) ?? 0));
+      setState(() {
+        _totalSpent  = spent;
+        _memberCount = (members as List).length;
+        _loaded      = true;
+      });
+    } catch (_) { setState(() => _loaded = true); }
   }
 
   @override
   Widget build(BuildContext context) {
+    final hasBudget = widget.group.hasBudget;
+    final budgetFrac = hasBudget
+        ? (_totalSpent / widget.group.budgetAmount).clamp(0.0, 1.0)
+        : 0.0;
+    final budgetOver = hasBudget && _totalSpent > widget.group.budgetAmount;
+
     return GestureDetector(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => GroupDetailScreen(
-          group: group, currentUid: currentUid, onUpdate: onRefresh),
-      )),
+          group: widget.group, currentUid: widget.currentUid,
+          onUpdate: widget.onRefresh),
+      )).then((_) => _loadGroupStats()),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),
@@ -636,34 +777,77 @@ class _GroupTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: _color.withValues(alpha: 0.20)),
         ),
-        child: Row(children: [
-          Container(
-            width: 44, height: 44,
-            decoration: BoxDecoration(
-              color: _color.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            // Emoji icon
+            Container(
+              width: 44, height: 44,
+              decoration: BoxDecoration(
+                color: _color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              alignment: Alignment.center,
+              child: Text(_categoryEmoji(widget.group.category),
+                style: const TextStyle(fontSize: 20)),
             ),
-            alignment: Alignment.center,
-            child: Text(_categoryEmoji(group.category),
-              style: const TextStyle(fontSize: 20)),
-          ),
-          const SizedBox(width: 12),
-          Expanded(child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(group.name, style: TextStyle(
-                fontFamily: 'DMSans', fontSize: 14,
-                fontWeight: FontWeight.w700, color: _color)),
-              if (group.description?.isNotEmpty == true) ...[
+            const SizedBox(width: 12),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(widget.group.name, style: TextStyle(
+                  fontFamily: 'DMSans', fontSize: 14,
+                  fontWeight: FontWeight.w700, color: _color)),
                 const SizedBox(height: 2),
-                Text(group.description!,
-                  style: const TextStyle(fontFamily: 'DMSans',
-                      fontSize: 11, color: AppColors.text3),
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                Row(children: [
+                  Icon(Icons.people_outline_rounded,
+                      size: 11, color: AppColors.text3),
+                  const SizedBox(width: 3),
+                  Text('$_memberCount member${_memberCount != 1 ? "s" : ""}',
+                    style: const TextStyle(fontFamily: 'DMSans',
+                        fontSize: 10.5, color: AppColors.text3)),
+                  if (_loaded && _totalSpent > 0) ...[
+                    const Text(' · ', style: TextStyle(
+                        color: AppColors.text3, fontSize: 10.5)),
+                    Text(fmtP(_totalSpent) + ' spent',
+                      style: TextStyle(fontFamily: 'DMMono', fontSize: 10.5,
+                          color: _color.withValues(alpha: 0.75))),
+                  ],
+                ]),
               ],
-            ],
-          )),
-          Icon(Icons.chevron_right_rounded, color: _color, size: 18),
+            )),
+            Icon(Icons.chevron_right_rounded, color: _color, size: 18),
+          ]),
+
+          // ── Budget progress bar ──────────────────────────────
+          if (hasBudget && _loaded) ...[
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  budgetOver
+                      ? 'Over budget by ${fmtP(_totalSpent - widget.group.budgetAmount)}'
+                      : '${fmtP(widget.group.budgetAmount - _totalSpent)} left of ${fmtP(widget.group.budgetAmount)}',
+                  style: TextStyle(fontFamily: 'DMSans', fontSize: 9.5,
+                      color: budgetOver
+                          ? const Color(0xFFEF4444) : AppColors.text3)),
+                Text('${(budgetFrac * 100).toStringAsFixed(0)}%',
+                  style: TextStyle(fontFamily: 'DMMono', fontSize: 9.5,
+                      fontWeight: FontWeight.w600,
+                      color: budgetOver
+                          ? const Color(0xFFEF4444) : _color)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: budgetFrac, minHeight: 5,
+                backgroundColor: AppColors.bg4,
+                color: budgetOver ? const Color(0xFFEF4444) : _color,
+              ),
+            ),
+          ],
         ]),
       ),
     );
@@ -1010,15 +1194,16 @@ class GroupDetailScreen extends ConsumerStatefulWidget {
 class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tab;
-  List<SettleExpense> _expenses = [];
-  List<GroupMember>   _members  = [];
+  List<SettleExpense>          _expenses   = [];
+  List<GroupMember>            _members    = [];
+  List<Map<String, dynamic>>   _activities = [];
   bool _loading = true;
   RealtimeChannel? _channel;
 
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 3, vsync: this);
+    _tab = TabController(length: 4, vsync: this);
     _loadAll();
     _subscribeRealtime();
   }
@@ -1031,8 +1216,20 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
   }
 
   Future<void> _loadAll() async {
-    await Future.wait([_loadExpenses(), _loadMembers()]);
+    await Future.wait([_loadExpenses(), _loadMembers(), _loadActivities()]);
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _loadActivities() async {
+    try {
+      final rows = await _db
+          .from('settle_activities')
+          .select('*, profiles(name)')
+          .eq('group_id', widget.group.id)
+          .order('created_at', ascending: false)
+          .limit(40);
+      _activities = List<Map<String, dynamic>>.from(rows as List);
+    } catch (_) {}
   }
 
   Future<void> _loadExpenses() async {
@@ -1223,6 +1420,49 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
             ]),
           ),
 
+          // ── Budget progress bar (if budget set) ─────────────
+          Builder(builder: (_) {
+            if (!widget.group.hasBudget || _expenses.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            final spent = _expenses
+                .where((e) => !e.isSettlement)
+                .fold<int>(0, (s, e) => s + e.amount);
+            final budget = widget.group.budgetAmount;
+            final frac   = (spent / budget).clamp(0.0, 1.0);
+            final over   = spent > budget;
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Budget', style: const TextStyle(
+                        fontFamily: 'DMSans', fontSize: 10,
+                        color: AppColors.text3)),
+                    Text(
+                      over
+                          ? 'Over by ${fmtP(spent - budget)}'
+                          : '${fmtP(spent)} of ${fmtP(budget)} · ${fmtP(budget - spent)} left',
+                      style: TextStyle(fontFamily: 'DMMono', fontSize: 10,
+                          color: over
+                              ? const Color(0xFFEF4444) : _groupColor)),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: frac, minHeight: 6,
+                    backgroundColor: AppColors.bg4,
+                    color: over ? const Color(0xFFEF4444) : _groupColor,
+                  ),
+                ),
+              ]),
+            );
+          }),
+
           const SizedBox(height: 12),
 
           // ── Tab bar ─────────────────────────────────────────
@@ -1254,6 +1494,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                   Tab(text: 'Expenses'),
                   Tab(text: 'Balances'),
                   Tab(text: 'Members'),
+                  Tab(text: 'Activity'),
                 ],
               ),
             ),
@@ -1276,18 +1517,41 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                       _BalancesTab(
                           netBalances: _groupNetBalances,
                           memberNames: _memberNames,
+                          members: _members,
                           currentUid: widget.currentUid,
                           groupColor: _groupColor,
                           onSettle: _recordSettlement),
                       _MembersTab(
-                          members: _members, groupId: widget.group.id,
-                          groupColor: _groupColor, onAdded: _loadMembers),
+                          members: _members,
+                          groupId: widget.group.id,
+                          groupColor: _groupColor,
+                          currentUid: widget.currentUid,
+                          groupCreatedBy: widget.group.createdBy ?? '',
+                          onAdded: () => _loadMembers()
+                              .then((_) { if (mounted) setState(() {}); }),
+                          onDeleted: _deleteMember),
+                      _ActivitiesTab(
+                          activities: _activities,
+                          members: _members,
+                          groupColor: _groupColor,
+                          onRefresh: () => _loadActivities()
+                              .then((_) { if (mounted) setState(() {}); })),
                     ],
                   ),
           ),
         ]),
       ),
     );
+  }
+
+  Future<void> _deleteMember(String memberId) async {
+    try {
+      await _db.from('settle_group_members').delete().eq('id', memberId);
+      await _loadMembers();
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('deleteMember: $e');
+    }
   }
 
   void _showAddExpense() {
@@ -1469,24 +1733,94 @@ class _ExpensesTab extends StatelessWidget {
   }
 }
 
-// ── Balances tab ───────────────────────────────────────────────
+// ── Balances tab — with UPI pay + per-member spending ─────────
 class _BalancesTab extends StatelessWidget {
-  final Map<String, int> netBalances;
-  final Map<String, String> memberNames;
-  final String currentUid;
-  final Color groupColor;
+  final Map<String, int>      netBalances;
+  final Map<String, String>   memberNames;
+  final List<GroupMember>     members;
+  final String                currentUid;
+  final Color                 groupColor;
   final Future<void> Function(String, String, int) onSettle;
   const _BalancesTab({
     required this.netBalances, required this.memberNames,
+    required this.members,
     required this.currentUid, required this.groupColor,
     required this.onSettle,
   });
+
+  // Multi-app UPI payment sheet
+  void _showUpiSheet(BuildContext context, String toName, int amount) {
+    final rupees = toR(amount).toStringAsFixed(2);
+    final note   = Uri.encodeComponent('Hisaab settle - $toName');
+
+    Future<void> launch(String scheme) async {
+      final uri = Uri.parse(scheme);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        // Fallback: generic UPI chooser
+        final fallback = Uri.parse('upi://pay?am=$rupees&cu=INR&tn=$note');
+        if (await canLaunchUrl(fallback)) {
+          await launchUrl(fallback, mode: LaunchMode.externalApplication);
+        }
+      }
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppColors.bg2,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.border2),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Pay via UPI', style: TextStyle(
+            fontFamily: 'DMSans', fontSize: 16,
+            fontWeight: FontWeight.w700, color: AppColors.text)),
+          const SizedBox(height: 4),
+          Text('Paying ${fmtP(amount)} to $toName',
+            style: const TextStyle(fontFamily: 'DMSans',
+                fontSize: 12, color: AppColors.text3)),
+          const SizedBox(height: 18),
+          Row(children: [
+            _UpiAppButton('GPay', '🟢',
+              () => launch('tez://upi/pay?am=$rupees&cu=INR&tn=$note')),
+            const SizedBox(width: 10),
+            _UpiAppButton('PhonePe', '🟣',
+              () => launch('phonepe://pay?am=$rupees&cu=INR&tn=$note')),
+            const SizedBox(width: 10),
+            _UpiAppButton('Paytm', '🔵',
+              () => launch('paytmmp://pay?am=$rupees&cu=INR&tn=$note')),
+            const SizedBox(width: 10),
+            _UpiAppButton('Any UPI', '📲',
+              () => launch('upi://pay?am=$rupees&cu=INR&tn=$note')),
+          ]),
+          const SizedBox(height: 14),
+          const Text('Tip: Add recipient\'s UPI ID in their profile\nfor one-tap targeted payment.',
+            style: TextStyle(fontFamily: 'DMSans', fontSize: 10.5,
+                color: AppColors.text3, height: 1.4),
+            textAlign: TextAlign.center),
+        ]),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final settlements = simplifyDebts(netBalances, memberNames);
 
-    if (settlements.isEmpty) {
+    // ── Per-member total paid stats ──────────────────────────────
+    final memberTotals = <String, int>{};
+    for (final entry in netBalances.entries) {
+      // positive = owed money = paid more than share
+      if (entry.value > 0) memberTotals[entry.key] = entry.value;
+    }
+
+    if (settlements.isEmpty && memberTotals.isEmpty) {
       return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(
           padding: const EdgeInsets.all(16),
@@ -1502,105 +1836,242 @@ class _BalancesTab extends StatelessWidget {
           fontFamily: 'DMSans', fontSize: 16,
           fontWeight: FontWeight.w700, color: AppColors.text)),
         const SizedBox(height: 6),
-        const Text('No outstanding balances in this group.',
+        const Text('No outstanding balances.\nAdd an expense to start tracking.',
           style: TextStyle(fontFamily: 'DMSans', fontSize: 12,
-              color: AppColors.text3)),
+              color: AppColors.text3), textAlign: TextAlign.center),
       ]));
     }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Text(
-            '${settlements.length} payment${settlements.length > 1 ? "s" : ""} to settle this group',
-            style: const TextStyle(fontFamily: 'DMSans', fontSize: 11,
-                color: AppColors.text3)),
-        ),
-        ...settlements.map((s) {
-          final isCurrentPaying = s.fromId == currentUid;
-          final isCurrentReceiving = s.toId == currentUid;
-          final color = isCurrentPaying
-              ? const Color(0xFFEF4444)
-              : isCurrentReceiving
-                  ? const Color(0xFF22C55E)
-                  : AppColors.text2;
-
-          return Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: color.withValues(alpha: 0.20)),
-            ),
+        // ── Who needs to pay whom ─────────────────────────────
+        if (settlements.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
             child: Row(children: [
-              Expanded(child: RichText(
-                text: TextSpan(
-                  style: const TextStyle(
-                      fontFamily: 'DMSans', fontSize: 13.5,
-                      color: AppColors.text),
-                  children: [
-                    TextSpan(
-                      text: s.fromId == currentUid ? 'You' : s.fromName,
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700, color: color)),
-                    const TextSpan(text: ' pays '),
-                    TextSpan(
-                      text: s.toId == currentUid ? 'You' : s.toName,
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700, color: color)),
-                  ],
-                ),
-              )),
-              Text(fmtP(s.amount), style: TextStyle(
-                fontFamily: 'DMMono', fontSize: 16,
-                fontWeight: FontWeight.w700, color: color)),
-              if (isCurrentPaying) ...[
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: () => onSettle(s.fromId, s.toId, s.amount),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF22C55E).withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                          color: const Color(0xFF22C55E)
-                              .withValues(alpha: 0.30)),
-                    ),
-                    child: const Text('Mark paid',
-                      style: TextStyle(fontFamily: 'DMSans', fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF22C55E))),
-                  ),
-                ),
-              ],
+              const Text('TO SETTLE', style: TextStyle(fontFamily: 'DMSans',
+                  fontSize: 10, fontWeight: FontWeight.w600,
+                  letterSpacing: 0.4, color: AppColors.text3)),
+              const Spacer(),
+              Text('${settlements.length} payment${settlements.length > 1 ? "s" : ""}',
+                style: const TextStyle(fontFamily: 'DMSans', fontSize: 10,
+                    color: AppColors.text3)),
             ]),
-          );
-        }),
+          ),
+          ...settlements.map((s) {
+            final isCurrentPaying = s.fromId == currentUid;
+            final isCurrentReceiving = s.toId == currentUid;
+            final color = isCurrentPaying
+                ? const Color(0xFFEF4444)
+                : isCurrentReceiving
+                    ? const Color(0xFF22C55E)
+                    : AppColors.text2;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: color.withValues(alpha: 0.20)),
+              ),
+              child: Column(children: [
+                Row(children: [
+                  // Payer avatar
+                  Container(width: 32, height: 32,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.15),
+                      shape: BoxShape.circle),
+                    alignment: Alignment.center,
+                    child: Text(
+                      (s.fromId == currentUid ? 'You' : s.fromName)[0].toUpperCase(),
+                      style: TextStyle(fontFamily: 'DMSans', fontSize: 14,
+                          fontWeight: FontWeight.w700, color: color)),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(Icons.arrow_forward_rounded, size: 14, color: color),
+                  const SizedBox(width: 8),
+                  // Receiver avatar
+                  Container(width: 32, height: 32,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.15),
+                      shape: BoxShape.circle),
+                    alignment: Alignment.center,
+                    child: Text(
+                      (s.toId == currentUid ? 'You' : s.toName)[0].toUpperCase(),
+                      style: TextStyle(fontFamily: 'DMSans', fontSize: 14,
+                          fontWeight: FontWeight.w700, color: color)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${s.fromId == currentUid ? "You" : s.fromName} → ${s.toId == currentUid ? "You" : s.toName}',
+                        style: const TextStyle(fontFamily: 'DMSans',
+                            fontSize: 12.5, fontWeight: FontWeight.w600,
+                            color: AppColors.text)),
+                    ],
+                  )),
+                  Text(fmtP(s.amount), style: TextStyle(
+                    fontFamily: 'DMMono', fontSize: 17,
+                    fontWeight: FontWeight.w700, color: color)),
+                ]),
+                if (isCurrentPaying) ...[
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    // UPI Pay button
+                    Expanded(child: GestureDetector(
+                      onTap: () => _showUpiSheet(context, s.toName, s.amount),
+                      child: Container(
+                        height: 36,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: [
+                            groupColor, groupColor.withValues(alpha: 0.70)]),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.send_rounded,
+                                color: Colors.white, size: 13),
+                            SizedBox(width: 5),
+                            Text('Pay via UPI', style: TextStyle(
+                              fontFamily: 'DMSans', fontSize: 11.5,
+                              fontWeight: FontWeight.w700, color: Colors.white)),
+                          ],
+                        ),
+                      ),
+                    )),
+                    const SizedBox(width: 8),
+                    // Mark paid button
+                    GestureDetector(
+                      onTap: () => onSettle(s.fromId, s.toId, s.amount),
+                      child: Container(
+                        height: 36,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF22C55E).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                              color: const Color(0xFF22C55E)
+                                  .withValues(alpha: 0.30)),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Text('Mark paid',
+                          style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF22C55E))),
+                      ),
+                    ),
+                  ]),
+                ],
+              ]),
+            );
+          }),
+          const SizedBox(height: 16),
+        ],
+
+        // ── Per-member spending breakdown ─────────────────────
+        if (members.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.only(bottom: 10),
+            child: Text('MEMBER SPENDING', style: TextStyle(
+                fontFamily: 'DMSans', fontSize: 10,
+                fontWeight: FontWeight.w600, letterSpacing: 0.4,
+                color: AppColors.text3)),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.bg2,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.border2)),
+            child: Column(
+              children: members.asMap().entries.map((e) {
+                final idx = e.key;
+                final m   = e.value;
+                final bal = netBalances[m.key] ?? 0;
+                final isOwed  = bal > 0;
+                final owes    = bal < 0;
+                final settled = bal.abs() < 100;
+                final color = settled ? AppColors.text3
+                    : isOwed ? const Color(0xFF22C55E)
+                    : const Color(0xFFEF4444);
+                return Column(children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                    child: Row(children: [
+                      Container(width: 36, height: 36,
+                        decoration: BoxDecoration(
+                          color: groupColor.withValues(alpha: 0.15),
+                          shape: BoxShape.circle),
+                        alignment: Alignment.center,
+                        child: Text(m.initials, style: TextStyle(
+                          fontFamily: 'DMSans', fontSize: 14,
+                          fontWeight: FontWeight.w700, color: groupColor)),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            m.userId == currentUid ? '${m.name} (You)' : m.name,
+                            style: const TextStyle(fontFamily: 'DMSans',
+                                fontSize: 13, fontWeight: FontWeight.w600,
+                                color: AppColors.text)),
+                          Text(
+                            settled ? 'Settled up'
+                                : isOwed ? 'Gets back ${fmtP(bal)}'
+                                : 'Owes ${fmtP(bal.abs())}',
+                            style: TextStyle(fontFamily: 'DMSans',
+                                fontSize: 10.5, color: color)),
+                        ],
+                      )),
+                      if (!settled) Text(
+                        '${isOwed ? "+" : "−"}${fmtP(bal.abs())}',
+                        style: TextStyle(fontFamily: 'DMMono', fontSize: 14,
+                            fontWeight: FontWeight.w700, color: color)),
+                      if (settled) const Icon(Icons.check_circle_outline_rounded,
+                          color: AppColors.green, size: 16),
+                    ]),
+                  ),
+                  if (idx < members.length - 1)
+                    const Divider(color: AppColors.border, height: 1, indent: 60),
+                ]);
+              }).toList(),
+            ),
+          ),
+        ],
       ],
     );
   }
 }
 
-// ── Members tab ────────────────────────────────────────────────
+// ── Members tab — duplicate check, delete, "You" badge ────────
 class _MembersTab extends StatefulWidget {
-  final List<GroupMember> members;
-  final String groupId;
-  final Color groupColor;
-  final Future<void> Function() onAdded;
+  final List<GroupMember>          members;
+  final String                     groupId;
+  final String                     currentUid;
+  final String                     groupCreatedBy;
+  final Color                      groupColor;
+  final Future<void> Function()    onAdded;
+  final Future<void> Function(String memberId) onDeleted;
   const _MembersTab({
     required this.members, required this.groupId,
+    required this.currentUid, required this.groupCreatedBy,
     required this.groupColor, required this.onAdded,
+    required this.onDeleted,
   });
   @override
   State<_MembersTab> createState() => _MembersTabState();
 }
 
 class _MembersTabState extends State<_MembersTab> {
+  bool   _adding    = false;
+  String _addError  = '';
+
   void _addMember() {
     final ctrl = TextEditingController();
     showModalBottomSheet(
@@ -1667,12 +2138,14 @@ class _MembersTabState extends State<_MembersTab> {
   }
 
   Future<void> _doAddMember(String phoneOrName) async {
-    String? userId;
-    String displayName = phoneOrName;
+    if (mounted) setState(() { _adding = true; _addError = ''; });
     try {
       final isPhone = RegExp(r'^\+?[\d\s\-]{7,}$').hasMatch(phoneOrName);
+      String? userId;
+      String displayName = phoneOrName;
+
+      // ── 1. Resolve profile from phone/name ─────────────────────
       if (isPhone) {
-        // Try all phone variants to handle +91 differences
         for (final variant in _phoneVariants(phoneOrName)) {
           final res = await _db.from('profiles')
               .select('id, name, phone')
@@ -1694,119 +2167,424 @@ class _MembersTabState extends State<_MembersTab> {
           displayName = (res['name'] as String?) ?? phoneOrName;
         }
       }
-    } catch (_) {}
 
-    try {
+      // ── 2. Duplicate detection before insert ───────────────────
+      // Check by userId OR by any phone variant
+      bool isDuplicate = false;
+
+      if (userId != null) {
+        final exists = await _db.from('settle_group_members')
+            .select('id')
+            .eq('group_id', widget.groupId)
+            .eq('user_id', userId)
+            .maybeSingle();
+        if (exists != null) isDuplicate = true;
+      }
+
+      if (!isDuplicate && isPhone) {
+        for (final variant in _phoneVariants(phoneOrName)) {
+          final exists = await _db.from('settle_group_members')
+              .select('id')
+              .eq('group_id', widget.groupId)
+              .eq('phone', variant)
+              .maybeSingle();
+          if (exists != null) { isDuplicate = true; break; }
+        }
+      }
+
+      if (isDuplicate) {
+        if (mounted) setState(() {
+          _adding  = false;
+          _addError = '${displayName.split(' ').first} is already in this group';
+        });
+        return;
+      }
+
+      // ── 3. Insert member ───────────────────────────────────────
       await _db.from('settle_group_members').insert({
         'group_id':     widget.groupId,
         if (userId != null) 'user_id': userId,
         'display_name': displayName,
         'phone':        phoneOrName,
       });
+
       await widget.onAdded();
-    } catch (_) {}
+      if (mounted) setState(() { _adding = false; _addError = ''; });
+    } catch (e) {
+      if (mounted) setState(() {
+        _adding  = false;
+        _addError = 'Could not add member. Try again.';
+      });
+    }
+  }
+
+  Future<void> _confirmDelete(GroupMember m) async {
+    // Creator can't be deleted; current user can't delete themselves
+    if (m.userId == widget.groupCreatedBy) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Group creator cannot be removed'),
+            duration: Duration(seconds: 2)));
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bg2,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: AppColors.border2)),
+        title: Text('Remove ${m.name}?', style: const TextStyle(
+            fontFamily: 'DMSans', fontSize: 15,
+            fontWeight: FontWeight.w600, color: AppColors.text)),
+        content: const Text('This removes the member from the group. '
+            'Their past expenses remain.',
+            style: TextStyle(fontFamily: 'DMSans', fontSize: 12.5,
+                color: AppColors.text2)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel',
+                  style: TextStyle(color: AppColors.text2))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Remove',
+                  style: TextStyle(color: AppColors.red,
+                      fontWeight: FontWeight.w600))),
+        ],
+      ),
+    ) ?? false;
+
+    if (confirmed) await widget.onDeleted(m.id);
   }
 
   Widget _inputField(TextEditingController c, String label, String hint) =>
-    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: const TextStyle(fontFamily: 'DMSans',
-          fontSize: 10.5, color: AppColors.text3)),
-      const SizedBox(height: 4),
-      Container(
-        decoration: BoxDecoration(color: AppColors.bg3,
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: AppColors.border)),
-        child: TextField(
-          controller: c,
-          style: const TextStyle(fontFamily: 'DMSans',
-              fontSize: 13, color: AppColors.text),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: const TextStyle(color: AppColors.text3, fontSize: 12),
-            border: InputBorder.none, enabledBorder: InputBorder.none,
-            focusedBorder: InputBorder.none, filled: false,
-            contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 10),
-          ),
+    Container(
+      decoration: BoxDecoration(color: AppColors.bg3,
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: AppColors.border)),
+      child: TextField(
+        controller: c,
+        style: const TextStyle(fontFamily: 'DMSans',
+            fontSize: 13, color: AppColors.text),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(color: AppColors.text3, fontSize: 12),
+          border: InputBorder.none, enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none, filled: false,
+          contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12, vertical: 10),
         ),
       ),
-    ]);
+    );
 
   @override
   Widget build(BuildContext context) {
+    final isCreator = widget.currentUid == widget.groupCreatedBy;
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
       children: [
-        ...widget.members.map((m) => Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: widget.groupColor.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-                color: widget.groupColor.withValues(alpha: 0.18)),
+        // ── Error banner ─────────────────────────────────────────
+        if (_addError.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.red.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.red.withValues(alpha: 0.25))),
+            child: Row(children: [
+              const Icon(Icons.info_outline_rounded,
+                  color: AppColors.red, size: 15),
+              const SizedBox(width: 8),
+              Expanded(child: Text(_addError, style: const TextStyle(
+                  fontFamily: 'DMSans', fontSize: 12,
+                  color: AppColors.red))),
+              GestureDetector(
+                onTap: () => setState(() => _addError = ''),
+                child: const Icon(Icons.close_rounded,
+                    color: AppColors.red, size: 14)),
+            ]),
           ),
-          child: Row(children: [
-            Container(
-              width: 38, height: 38,
-              decoration: BoxDecoration(
-                color: widget.groupColor.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: Text(m.initials, style: TextStyle(
-                fontFamily: 'DMSans', fontSize: 15,
-                fontWeight: FontWeight.w700, color: widget.groupColor)),
+
+        // ── Member list ──────────────────────────────────────────
+        ...widget.members.map((m) {
+          final isMe       = m.userId == widget.currentUid;
+          final isGroupCreator = m.userId == widget.groupCreatedBy;
+          final canDelete  = isCreator && !isGroupCreator;
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: widget.groupColor.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: widget.groupColor.withValues(alpha: 0.18)),
             ),
+            child: Row(children: [
+              // Avatar
+              Container(
+                width: 38, height: 38,
+                decoration: BoxDecoration(
+                  color: widget.groupColor.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Text(m.initials, style: TextStyle(
+                  fontFamily: 'DMSans', fontSize: 15,
+                  fontWeight: FontWeight.w700, color: widget.groupColor)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(isMe ? '${m.name} (You)' : m.name,
+                    style: const TextStyle(fontFamily: 'DMSans',
+                        fontSize: 13, fontWeight: FontWeight.w600,
+                        color: AppColors.text)),
+                  if (m.phone != null && m.phone!.isNotEmpty)
+                    Text(m.phone!, style: const TextStyle(
+                        fontFamily: 'DMSans', fontSize: 10.5,
+                        color: AppColors.text3)),
+                ],
+              )),
+              // Badges
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                if (isGroupCreator)
+                  _badge('Creator', const Color(0xFF7B2FFE)),
+                if (isGroupCreator) const SizedBox(width: 4),
+                if (m.userId != null)
+                  _badge('ZeroTab', AppColors.green),
+              ]),
+              // Delete button (creator only, not for self or group creator)
+              if (canDelete) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => _confirmDelete(m),
+                  child: Container(
+                    width: 28, height: 28,
+                    decoration: BoxDecoration(
+                      color: AppColors.red.withValues(alpha: 0.08),
+                      shape: BoxShape.circle),
+                    alignment: Alignment.center,
+                    child: const Icon(Icons.person_remove_outlined,
+                        color: AppColors.red, size: 14)),
+                ),
+              ],
+            ]),
+          );
+        }),
+
+        const SizedBox(height: 10),
+
+        // ── Add member ───────────────────────────────────────────
+        StatefulBuilder(builder: (ctx, setS) {
+          final ctrl = TextEditingController();
+          return Column(children: [
+            Row(children: [
+              Expanded(child: _inputField(ctrl,
+                  '+91 phone, email, or name', '+91 9876543210')),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: _adding ? null : () async {
+                  final val = ctrl.text.trim();
+                  if (val.isEmpty) return;
+                  ctrl.clear();
+                  await _doAddMember(val);
+                },
+                child: Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    color: _adding
+                        ? AppColors.bg3
+                        : widget.groupColor,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  alignment: Alignment.center,
+                  child: _adding
+                      ? SizedBox(width: 16, height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: widget.groupColor))
+                      : const Icon(Icons.person_add_rounded,
+                          color: Colors.white, size: 18),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            const Text(
+              'If they have ZeroTab, they\'ll be linked automatically.\n'
+              'Others can be added by name and split manually.',
+              style: TextStyle(fontFamily: 'DMSans', fontSize: 10.5,
+                  color: AppColors.text3, height: 1.4)),
+          ]);
+        }),
+      ],
+    );
+  }
+
+  Widget _badge(String text, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.10),
+      borderRadius: BorderRadius.circular(6)),
+    child: Text(text, style: TextStyle(fontFamily: 'DMSans',
+        fontSize: 9, fontWeight: FontWeight.w600, color: color)),
+  );
+}
+
+// ── UPI app button ─────────────────────────────────────────────
+class _UpiAppButton extends StatelessWidget {
+  final String label, emoji;
+  final VoidCallback onTap;
+  const _UpiAppButton(this.label, this.emoji, this.onTap);
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.bg3,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border2)),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(emoji, style: const TextStyle(fontSize: 22)),
+          const SizedBox(height: 5),
+          Text(label, style: const TextStyle(fontFamily: 'DMSans',
+              fontSize: 10, fontWeight: FontWeight.w600,
+              color: AppColors.text2)),
+        ]),
+      ),
+    ),
+  );
+}
+
+// ── Activity feed tab ─────────────────────────────────────────
+class _ActivitiesTab extends StatelessWidget {
+  final List<Map<String, dynamic>> activities;
+  final List<GroupMember>          members;
+  final Color                      groupColor;
+  final VoidCallback               onRefresh;
+  const _ActivitiesTab({
+    required this.activities, required this.members,
+    required this.groupColor, required this.onRefresh,
+  });
+
+  String _actorName(Map<String, dynamic> a) {
+    final profile = a['profiles'] as Map<String, dynamic>?;
+    if (profile?['name'] != null) return profile!['name'] as String;
+    final uid = a['user_id'] as String?;
+    if (uid != null) {
+      final m = members.where((m) => m.userId == uid).firstOrNull;
+      if (m != null) return m.name;
+    }
+    return 'Someone';
+  }
+
+  String _actionLabel(String action, Map<String, dynamic> meta) {
+    final title = meta['title'] as String?;
+    final amount = meta['amount'] as int?;
+    switch (action) {
+      case 'added_expense':
+        final amtStr = amount != null ? ' (${fmtP(amount)})' : '';
+        return 'added "${title ?? "expense"}"$amtStr';
+      case 'joined_group': return 'joined the group';
+      case 'settled':      return 'marked a payment as settled';
+      default:             return action.replaceAll('_', ' ');
+    }
+  }
+
+  String _timeAgo(String? iso) {
+    if (iso == null) return '';
+    final diff = DateTime.now().difference(DateTime.parse(iso));
+    if (diff.inMinutes < 1)  return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24)   return '${diff.inHours}h ago';
+    if (diff.inDays < 7)     return '${diff.inDays}d ago';
+    return '${diff.inDays ~/ 7}w ago';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (activities.isEmpty) {
+      return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.timeline_rounded, color: groupColor.withValues(alpha: 0.40),
+            size: 36),
+        const SizedBox(height: 12),
+        const Text('No activity yet', style: TextStyle(
+          fontFamily: 'DMSans', fontSize: 14,
+          fontWeight: FontWeight.w600, color: AppColors.text)),
+        const SizedBox(height: 6),
+        const Text('Every expense and settlement\nwill appear here.',
+          style: TextStyle(fontFamily: 'DMSans', fontSize: 12,
+              color: AppColors.text3), textAlign: TextAlign.center),
+        const SizedBox(height: 16),
+        GestureDetector(
+          onTap: onRefresh,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.bg3,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.border)),
+            child: const Text('Refresh', style: TextStyle(
+                fontFamily: 'DMSans', fontSize: 12,
+                color: AppColors.text2))),
+        ),
+      ]));
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+      itemCount: activities.length,
+      itemBuilder: (_, i) {
+        final a      = activities[i];
+        final action = a['action'] as String? ?? '';
+        final meta   = (a['metadata'] as Map<String, dynamic>?) ?? {};
+        final ts     = a['created_at'] as String?;
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // Timeline dot + line
+            Column(children: [
+              Container(
+                width: 10, height: 10,
+                decoration: BoxDecoration(
+                  color: groupColor,
+                  shape: BoxShape.circle,
+                  boxShadow: [BoxShadow(
+                    color: groupColor.withValues(alpha: 0.40),
+                    blurRadius: 6)]),
+              ),
+              if (i < activities.length - 1)
+                Container(width: 2, height: 40,
+                    color: groupColor.withValues(alpha: 0.15)),
+            ]),
             const SizedBox(width: 12),
             Expanded(child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(m.name, style: const TextStyle(
-                  fontFamily: 'DMSans', fontSize: 13,
-                  fontWeight: FontWeight.w600, color: AppColors.text)),
-                if (m.phone != null)
-                  Text(m.phone!, style: const TextStyle(
+                RichText(text: TextSpan(
+                  style: const TextStyle(fontFamily: 'DMSans',
+                      fontSize: 13, color: AppColors.text),
+                  children: [
+                    TextSpan(text: _actorName(a),
+                        style: TextStyle(fontWeight: FontWeight.w700,
+                            color: groupColor)),
+                    const TextSpan(text: ' '),
+                    TextSpan(text: _actionLabel(action, meta)),
+                  ],
+                )),
+                const SizedBox(height: 2),
+                Text(_timeAgo(ts), style: const TextStyle(
                     fontFamily: 'DMSans', fontSize: 10.5,
                     color: AppColors.text3)),
               ],
             )),
-            if (m.userId != null)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.green.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text('ZeroTab',
-                  style: TextStyle(fontFamily: 'DMSans', fontSize: 9,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.green)),
-              ),
           ]),
-        )),
-        const SizedBox(height: 6),
-        GestureDetector(
-          onTap: _addMember,
-          child: Container(
-            height: 44,
-            decoration: BoxDecoration(
-              color: AppColors.bg3,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: widget.groupColor.withValues(alpha: 0.30)),
-            ),
-            alignment: Alignment.center,
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.person_add_outlined, color: widget.groupColor, size: 16),
-              const SizedBox(width: 6),
-              Text('Add Member', style: TextStyle(fontFamily: 'DMSans',
-                  fontSize: 12.5, fontWeight: FontWeight.w600,
-                  color: widget.groupColor)),
-            ]),
-          ),
-        ),
-      ],
+        );
+      },
     );
   }
 }
@@ -2081,6 +2859,7 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
   final _nameCtrl    = TextEditingController();
   final _descCtrl    = TextEditingController();
   final _memberCtrl  = TextEditingController();
+  final _budgetCtrl  = TextEditingController();
   String _category   = 'general';
   String _coverColor = '#22C55E';
   List<String> _pendingMembers = [];
@@ -2108,6 +2887,7 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
     _nameCtrl.dispose();
     _descCtrl.dispose();
     _memberCtrl.dispose();
+    _budgetCtrl.dispose();
     super.dispose();
   }
 
@@ -2117,14 +2897,16 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
     setState(() => _loading = true);
     try {
       // 1. Create group
+      final budgetRupees = double.tryParse(_budgetCtrl.text) ?? 0;
       final res = await _db.from('settle_groups').insert({
-        'name':        name,
-        'description': _descCtrl.text.trim().isEmpty
-                         ? null : _descCtrl.text.trim(),
-        'category':    _category,
-        'cover_color': _coverColor,
-        'created_by':  widget.currentUid,
-        'currency':    'INR',
+        'name':          name,
+        'description':   _descCtrl.text.trim().isEmpty
+                           ? null : _descCtrl.text.trim(),
+        'category':      _category,
+        'cover_color':   _coverColor,
+        'created_by':    widget.currentUid,
+        'currency':      'INR',
+        'budget_amount': budgetRupees > 0 ? toP(budgetRupees) : 0,
       }).select().single();
 
       final groupId = res['id'] as String;
@@ -2256,6 +3038,35 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
               ),
             ),
           )).toList()),
+          const SizedBox(height: 14),
+
+          // Budget (optional)
+          _lbl('Group budget (₹, optional)'),
+          const SizedBox(height: 6),
+          Container(
+            height: 42,
+            decoration: BoxDecoration(color: AppColors.bg3,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.border)),
+            child: TextField(
+              controller: _budgetCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              style: const TextStyle(fontFamily: 'DMMono',
+                  fontSize: 15, color: AppColors.text),
+              decoration: const InputDecoration(
+                hintText: 'e.g. 20000 for a trip budget',
+                hintStyle: TextStyle(color: AppColors.text3,
+                    fontSize: 12, fontFamily: 'DMSans'),
+                prefixText: '₹ ',
+                prefixStyle: TextStyle(fontFamily: 'DMMono',
+                    fontSize: 15, color: AppColors.text2),
+                border: InputBorder.none, enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none, filled: false,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                isDense: true,
+              ),
+            ),
+          ),
           const SizedBox(height: 14),
 
           // Add members

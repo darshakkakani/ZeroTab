@@ -1655,8 +1655,8 @@ class _SmartToolsGrid extends StatelessWidget {
       _ToolTile(
         icon: Icons.balance_outlined,
         color: const Color(0xFF22C55E),
-        label: 'SettleUp',
-        sublabel: 'Groups & splits',
+        label: 'Hisaab',
+        sublabel: 'Shared expenses',
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => const SettleUpScreen(),
           fullscreenDialog: false,
