@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'habits_widgets.dart';
+import 'settleup_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -253,7 +254,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   final _searchCtrl = TextEditingController();
   String       _filterLabel   = 'All';
   _TimePeriod  _period        = _TimePeriod.month;
-  bool         _recategorizing = false;
   bool         _importing      = false;
 
   static const _chips = [
@@ -294,61 +294,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     setState(() => _filterLabel = label);
     ref.read(transactionParamsProvider.notifier).update(
         (s) => cat == null ? s.copyWith(clearCategory: true) : s.copyWith(category: cat));
-  }
-
-  Future<void> _recategorize() async {
-    setState(() => _recategorizing = true);
-    try {
-      // Step 1 — backend pass
-      final res = await api.post('/transactions/recategorize');
-      int fixed = (res.data as Map?)?['fixed'] as int? ?? 0;
-
-      // Step 2 — frontend smart pass: fetch current transactions and
-      //          fix any that are still 'others' but we know the merchant
-      try {
-        final txnRes = await api.get(ApiConstants.transactions,
-            params: {'limit': 200});
-        final rawList = (txnRes.data as Map?)?['data'] as List? ?? [];
-        final futures = <Future<void>>[];
-
-        for (final raw in rawList) {
-          final txn = TransactionModel.fromJson(raw as Map<String, dynamic>);
-          if ((txn.category ?? 'others') == 'others') {
-            final merchant = txn.merchant ?? txn.description ?? '';
-            final suggested = _autoSuggestCategory(merchant);
-            if (suggested != null && suggested != 'others') {
-              futures.add(
-                api.patch('${ApiConstants.transactions}/${txn.id}',
-                    data: {'category': suggested}).then((_) {
-                  fixed++;
-                }).catchError((_) {}),
-              );
-            }
-          }
-        }
-
-        if (futures.isNotEmpty) await Future.wait(futures);
-      } catch (_) {
-        // frontend pass is best-effort — don't fail the whole operation
-      }
-
-      ref.invalidate(transactionsProvider);
-      if (mounted) {
-        _showPremiumSnackBar(
-          context,
-          fixed > 0
-              ? 'Fixed $fixed transaction categories'
-              : 'Categories up to date',
-          success: true,
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        _showPremiumSnackBar(context, 'Recategorize failed', success: false);
-      }
-    } finally {
-      if (mounted) setState(() => _recategorizing = false);
-    }
   }
 
   void _showAddSheet() {
@@ -738,24 +683,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     ]),
                   ),
                 ),
-                const SizedBox(width: 8),
-                // Recategorize
-                GestureDetector(
-                  onTap: _recategorizing ? null : _recategorize,
-                  child: Container(
-                    width: 34, height: 34,
-                    decoration: BoxDecoration(
-                      color: AppColors.bg3,
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    alignment: Alignment.center,
-                    child: _recategorizing
-                        ? const SizedBox(width: 14, height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.teal))
-                        : const Icon(Icons.auto_fix_high_rounded, size: 16, color: AppColors.teal),
-                  ),
-                ),
               ]),
             )),
 
@@ -778,7 +705,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
             SliverToBoxAdapter(child: const SizedBox(height: 10)),
 
-            // ── Spending summary card ─────────────────────
+            // ── Spending summary: 2×2 premium grid ───────
             SliverToBoxAdapter(child: txnAsync.when(
               loading: () => const SizedBox.shrink(),
               error: (_, __) => const SizedBox.shrink(),
@@ -792,29 +719,39 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                 final net = totalCredit - totalDebit;
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft, end: Alignment.bottomRight,
-                        colors: [Color(0xFF0E0A1E), Color(0xFF080611)]),
-                      borderRadius: BorderRadius.circular(AppRadius.xl),
-                      border: Border.all(color: AppColors.border2),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _SummaryPill('Spent', '−${formatInr(totalDebit, compact: true)}', AppColors.coral),
-                        Container(width: 1, height: 28, color: AppColors.border),
-                        _SummaryPill('Income', '+${formatInr(totalCredit, compact: true)}', AppColors.green),
-                        Container(width: 1, height: 28, color: AppColors.border),
-                        _SummaryPill('Net', '${net >= 0 ? '+' : ''}${formatInr(net.abs(), compact: true)}',
-                          net >= 0 ? AppColors.green : AppColors.coral),
-                        Container(width: 1, height: 28, color: AppColors.border),
-                        _SummaryPill('Count', '${txns.length}', AppColors.text2),
-                      ],
-                    ),
-                  ),
+                  child: Column(children: [
+                    Row(children: [
+                      _SummaryBox(
+                        label: 'Spent',
+                        value: '−${formatInr(totalDebit, compact: true)}',
+                        sub: 'This period',
+                        color: AppColors.coral,
+                      ),
+                      const SizedBox(width: 8),
+                      _SummaryBox(
+                        label: 'Income',
+                        value: '+${formatInr(totalCredit, compact: true)}',
+                        sub: 'Received',
+                        color: AppColors.green,
+                      ),
+                    ]),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      _SummaryBox(
+                        label: 'Net',
+                        value: '${net >= 0 ? '+' : '−'}${formatInr(net.abs(), compact: true)}',
+                        sub: net >= 0 ? 'Saved' : 'Deficit',
+                        color: net >= 0 ? AppColors.green : AppColors.coral,
+                      ),
+                      const SizedBox(width: 8),
+                      _SummaryBox(
+                        label: 'Count',
+                        value: '${txns.length}',
+                        sub: 'Transactions',
+                        color: AppColors.accent2,
+                      ),
+                    ]),
+                  ]),
                 );
               },
             )),
@@ -878,6 +815,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                             fontSize: 14,
                             letterSpacing: -0.1),
                         border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        filled: false,
                         contentPadding: EdgeInsets.zero,
                         isDense: true,
                       ),
@@ -987,24 +927,42 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   );
 }
 
-// ── Summary pill ──────────────────────────────────────────────
+// ── Summary box (2×2 grid tile) ──────────────────────────────
 
-class _SummaryPill extends StatelessWidget {
-  final String label;
-  final String value;
+class _SummaryBox extends StatelessWidget {
+  final String label, value, sub;
   final Color  color;
-  const _SummaryPill(this.label, this.value, this.color);
+  const _SummaryBox({
+    required this.label,
+    required this.value,
+    required this.sub,
+    required this.color,
+  });
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.center,
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Text(label, style: const TextStyle(fontFamily: 'DMSans', fontSize: 12, color: AppColors.text3)),
-      const SizedBox(height: 4),
-      Text(value, style: TextStyle(fontFamily: 'DMMono', fontSize: 16,
-        fontWeight: FontWeight.w700, color: color)),
-    ],
+  Widget build(BuildContext context) => Expanded(
+    child: Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: const TextStyle(
+          fontFamily: 'DMSans', fontSize: 10.5,
+          fontWeight: FontWeight.w500, color: AppColors.text3,
+          letterSpacing: 0.1)),
+        const SizedBox(height: 5),
+        Text(value, style: TextStyle(
+          fontFamily: 'DMMono', fontSize: 19,
+          fontWeight: FontWeight.w700, color: color, letterSpacing: -0.5)),
+        const SizedBox(height: 2),
+        Text(sub, style: TextStyle(
+          fontFamily: 'DMSans', fontSize: 10,
+          color: color.withValues(alpha: 0.55))),
+      ]),
+    ),
   );
 }
 
@@ -1473,7 +1431,7 @@ class _TxnItem extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(children: [
-        // Category icon circle (Splitwise-style, prominent)
+        // Category icon circle — colored with rounded square
         Container(
           width: 42, height: 42,
           decoration: BoxDecoration(
@@ -1744,46 +1702,47 @@ class _SmartToolsGrid extends StatelessWidget {
 
     final tiles = [
       _ToolTile(
-        icon: Icons.pie_chart_outline_rounded,
+        icon: Icons.donut_small_outlined,
         color: const Color(0xFF7B2FFE),
-        label: 'Budgets',
-        sublabel: 'YNAB envelopes',
-        onTap: () => _openSheet(context, 'Budget Envelopes',
+        label: 'FlowCast',
+        sublabel: 'Envelope budgets',
+        onTap: () => _openSheet(context, 'Flow Budgets',
             EnvelopeBudgets(txns: txns)),
       ),
       _ToolTile(
-        icon: Icons.people_outline_rounded,
+        icon: Icons.balance_outlined,
         color: const Color(0xFF22C55E),
-        label: 'Splits',
-        sublabel: 'Track who owes',
-        onTap: () => _openSheet(context, 'Splits & Balances',
-            const SplitLedger()),
+        label: 'SettleUp',
+        sublabel: 'Groups & splits',
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => const SettleUpScreen(),
+          fullscreenDialog: false,
+        )),
       ),
       _ToolTile(
-        icon: Icons.repeat_rounded,
+        icon: Icons.wifi_tethering_rounded,
         color: const Color(0xFF00CFDE),
-        label: 'Recurring',
-        sublabel: subCount > 0 ? '$subCount detected' : 'Auto-detect',
-        onTap: () => _openSheet(context, 'Subscription Radar',
-            SubscriptionRadar(allTxns: txns)),
+        label: 'Radar',
+        sublabel: subCount > 0 ? '$subCount drains found' : 'Detect drains',
+        onTap: () => _openSheet(context, 'Bill Radar',
+            BillRadar(allTxns: txns)),
       ),
       _ToolTile(
-        icon: Icons.local_fire_department_outlined,
+        icon: Icons.insights_rounded,
         color: const Color(0xFFF59E0B),
-        label: 'Habits',
+        label: 'Patterns',
         sublabel: topHabit != null
             ? '${topHabit.name}: ${formatInr(topHabit.total, compact: true)}'
-            : 'Spending patterns',
-        // Always tappable — shows empty state if no habits yet
-        onTap: () => _openSheet(context, 'Money Habits',
-            _HabitsDetail(habits: habits)),
+            : 'Behavior insights',
+        onTap: () => _openSheet(context, 'Patterns',
+            _HabitsDetail(habits: habits, txns: txns)),
       ),
     ];
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('SMART TOOLS',
+      const Text('MONEY INTELLIGENCE',
         style: TextStyle(fontFamily: 'DMSans', fontSize: 10,
-            fontWeight: FontWeight.w600, letterSpacing: 0.4,
+            fontWeight: FontWeight.w600, letterSpacing: 0.5,
             color: AppColors.text3)),
       const SizedBox(height: 8),
       Row(children: [
@@ -1806,9 +1765,9 @@ class _SmartToolsGrid extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.75,
-        minChildSize: 0.4,
-        maxChildSize: 0.95,
+        initialChildSize: 0.92,
+        minChildSize: 0.5,
+        maxChildSize: 0.96,
         builder: (_, ctrl) => Container(
           decoration: const BoxDecoration(
             color: AppColors.bg2,
@@ -1883,75 +1842,270 @@ class _ToolTile extends StatelessWidget {
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+//  Patterns V2 — Time-of-day + Day-of-week + Annual comparisons
+// ─────────────────────────────────────────────────────────────
+
 class _HabitsDetail extends StatelessWidget {
-  final List<SpendHabit> habits;
-  const _HabitsDetail({required this.habits});
+  final List<SpendHabit>       habits;
+  final List<TransactionModel> txns;   // for time/day analysis
+  const _HabitsDetail({required this.habits, this.txns = const []});
+
+  // Time of day spending breakdown
+  Map<String, double> _timeBreakdown() {
+    final m = {'Morning': 0.0, 'Afternoon': 0.0, 'Evening': 0.0, 'Night': 0.0};
+    for (final t in txns) {
+      if (!t.isDebit) continue;
+      final h = t.txnDate.hour;
+      final key = h >= 6 && h < 12 ? 'Morning'
+                : h >= 12 && h < 17 ? 'Afternoon'
+                : h >= 17 && h < 21 ? 'Evening'
+                : 'Night';
+      m[key] = m[key]! + t.amount;
+    }
+    return m;
+  }
+
+  // Day of week spending
+  Map<String, double> _dayBreakdown() {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final m = {for (final d in days) d: 0.0};
+    for (final t in txns) {
+      if (!t.isDebit) continue;
+      m[days[t.txnDate.weekday - 1]] = m[days[t.txnDate.weekday - 1]]! + t.amount;
+    }
+    return m;
+  }
+
+  String _annualCompare(double annual) {
+    if (annual > 200000) return '= a car down payment';
+    if (annual > 100000) return '= ${(annual/100000).toStringAsFixed(1)}L — an international trip';
+    if (annual > 50000)  return '= a scooter EMI for a year';
+    if (annual > 24000)  return '= ${(annual/2000).round()} months of groceries';
+    if (annual > 12000)  return '= a family weekend trip';
+    if (annual > 5000)   return '= ${(annual/500).round()} restaurant meals';
+    return '= ${(annual/100).round()} cups of coffee';
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (habits.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF59E0B).withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Icon(Icons.local_fire_department_outlined,
-                color: Color(0xFFF59E0B), size: 32),
-          ),
-          const SizedBox(height: 16),
-          const Text('No spending habits detected yet',
-            style: TextStyle(fontFamily: 'DMSans', fontSize: 15,
-                fontWeight: FontWeight.w700, color: AppColors.text),
-            textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          const Text(
-            'Habits are merchants you visit 2+ times.\nAdd more transactions or switch to a longer period (3M or All) to see patterns.',
-            style: TextStyle(fontFamily: 'DMSans', fontSize: 12.5,
-                color: AppColors.text3, height: 1.5),
-            textAlign: TextAlign.center),
-        ]),
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: habits.map((h) {
-        final color = catColor(h.category);
-        return Container(
-          margin: const EdgeInsets.only(bottom: 10),
+    final timeData = _timeBreakdown();
+    final dayData  = _dayBreakdown();
+    final maxTime  = timeData.values.fold(0.0, (a, b) => b > a ? b : a);
+    final maxDay   = dayData.values.fold(0.0, (a, b) => b > a ? b : a);
+
+    final peakTime = maxTime > 0
+        ? timeData.entries.reduce((a, b) => a.value > b.value ? a : b).key
+        : null;
+    final peakDay = maxDay > 0
+        ? dayData.entries.reduce((a, b) => a.value > b.value ? a : b).key
+        : null;
+
+    const timeColors = {
+      'Morning':   Color(0xFFF59E0B),
+      'Afternoon': Color(0xFFFF6B5B),
+      'Evening':   Color(0xFF7B5FFF),
+      'Night':     Color(0xFF00C4A8),
+    };
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // ── Time of Day section ─────────────────────────────────
+      if (maxTime > 0) ...[
+        Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.07),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withValues(alpha: 0.20)),
-          ),
-          child: Row(children: [
-            Container(width: 4, height: 40,
-              decoration: BoxDecoration(color: color,
-                  borderRadius: BorderRadius.circular(2))),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(h.name, style: TextStyle(fontFamily: 'DMSans', fontSize: 13,
-                  fontWeight: FontWeight.w600, color: color),
-                maxLines: 1, overflow: TextOverflow.ellipsis),
-              Text('${h.count} transactions · ${catEmoji(h.category)}',
-                style: const TextStyle(fontFamily: 'DMSans', fontSize: 10.5,
-                    color: AppColors.text3)),
-            ])),
-            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text(formatInr(h.total, compact: true),
-                style: TextStyle(fontFamily: 'DMMono', fontSize: 15,
-                    fontWeight: FontWeight.w700, color: color)),
-              Text('≈ ${formatInr(h.annualCost, compact: true)}/yr',
-                style: TextStyle(fontFamily: 'DMSans', fontSize: 10,
-                    color: color.withValues(alpha: 0.70))),
+            color: AppColors.bg2,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppColors.border2)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Text('TIME OF DAY', style: TextStyle(
+                fontFamily: 'DMSans', fontSize: 10,
+                fontWeight: FontWeight.w600, letterSpacing: 0.5,
+                color: AppColors.text3)),
+              const Spacer(),
+              if (peakTime != null)
+                Text('Most: $peakTime',
+                  style: TextStyle(fontFamily: 'DMSans', fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: timeColors[peakTime] ?? AppColors.accent)),
             ]),
+            const SizedBox(height: 12),
+            ...['Morning', 'Afternoon', 'Evening', 'Night'].map((slot) {
+              final amt   = timeData[slot] ?? 0;
+              final frac  = maxTime > 0 ? amt / maxTime : 0.0;
+              final color = timeColors[slot]!;
+              final isPeak = slot == peakTime;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(children: [
+                  SizedBox(width: 68,
+                    child: Text(slot, style: TextStyle(
+                      fontFamily: 'DMSans', fontSize: 11,
+                      fontWeight: isPeak ? FontWeight.w700 : FontWeight.w400,
+                      color: isPeak ? color : AppColors.text2))),
+                  Expanded(child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: frac, minHeight: 8,
+                      backgroundColor: AppColors.bg4, color: color),
+                  )),
+                  const SizedBox(width: 8),
+                  SizedBox(width: 54, child: Text(
+                    formatInr(amt, compact: true),
+                    textAlign: TextAlign.right,
+                    style: TextStyle(fontFamily: 'DMMono', fontSize: 10,
+                      fontWeight: isPeak ? FontWeight.w700 : FontWeight.w400,
+                      color: isPeak ? color : AppColors.text3))),
+                ]),
+              );
+            }),
+            if (peakTime != null) Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: (timeColors[peakTime] ?? AppColors.accent)
+                    .withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8)),
+              child: Text(
+                '💡 You spend most in $peakTime${peakDay != null ? " · Highest on ${peakDay}s" : ""}',
+                style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
+                    color: timeColors[peakTime] ?? AppColors.accent,
+                    height: 1.4)),
+            ),
           ]),
-        );
-      }).toList(),
-    );
+        ),
+        const SizedBox(height: 10),
+      ],
+
+      // ── Day of Week section ─────────────────────────────────
+      if (maxDay > 0) ...[
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.bg2,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppColors.border2)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('DAY OF WEEK', style: TextStyle(
+              fontFamily: 'DMSans', fontSize: 10,
+              fontWeight: FontWeight.w600, letterSpacing: 0.5,
+              color: AppColors.text3)),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d) {
+                final amt   = dayData[d] ?? 0;
+                final frac  = maxDay > 0 ? amt / maxDay : 0.0;
+                final isPeak = d == peakDay;
+                final barH  = (frac * 60).clamp(4.0, 60.0);
+                return Column(mainAxisSize: MainAxisSize.min, children: [
+                  if (amt > 0) Text(formatInr(amt, compact: true),
+                    style: TextStyle(fontFamily: 'DMMono', fontSize: 8,
+                        color: isPeak ? AppColors.accent2 : AppColors.text3)),
+                  const SizedBox(height: 4),
+                  Container(
+                    width: 28, height: barH,
+                    decoration: BoxDecoration(
+                      color: isPeak
+                          ? AppColors.accent
+                          : AppColors.accent.withValues(alpha: 0.30),
+                      borderRadius: BorderRadius.circular(4))),
+                  const SizedBox(height: 5),
+                  Text(d, style: TextStyle(fontFamily: 'DMSans',
+                    fontSize: 9,
+                    fontWeight: isPeak ? FontWeight.w700 : FontWeight.w400,
+                    color: isPeak ? AppColors.accent2 : AppColors.text3)),
+                ]);
+              }).toList(),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 10),
+      ],
+
+      // ── Habit list with annual comparisons ──────────────────
+      if (habits.isEmpty)
+        Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(children: [
+            const Icon(Icons.insights_rounded,
+                color: Color(0xFFF59E0B), size: 32),
+            const SizedBox(height: 12),
+            const Text('No patterns yet',
+              style: TextStyle(fontFamily: 'DMSans', fontSize: 15,
+                  fontWeight: FontWeight.w700, color: AppColors.text),
+              textAlign: TextAlign.center),
+            const SizedBox(height: 6),
+            const Text(
+              'Add more transactions or switch to 3M / All\n'
+              'to see which habits cost you the most annually.',
+              style: TextStyle(fontFamily: 'DMSans', fontSize: 12.5,
+                  color: AppColors.text3, height: 1.5),
+              textAlign: TextAlign.center),
+          ]),
+        )
+      else ...[
+        Container(
+          padding: const EdgeInsets.fromLTRB(14, 11, 14, 0),
+          decoration: BoxDecoration(
+            color: AppColors.bg2,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppColors.border2)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('TOP HABITS', style: TextStyle(
+              fontFamily: 'DMSans', fontSize: 10,
+              fontWeight: FontWeight.w600, letterSpacing: 0.5,
+              color: AppColors.text3)),
+            const SizedBox(height: 8),
+            ...habits.take(6).toList().asMap().entries.map((e) {
+              final i = e.key;
+              final h = e.value;
+              final color = catColor(h.category);
+              return Column(children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(children: [
+                    Container(width: 4, height: 44,
+                      decoration: BoxDecoration(color: color,
+                          borderRadius: BorderRadius.circular(2))),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(h.name, style: TextStyle(fontFamily: 'DMSans',
+                            fontSize: 13, fontWeight: FontWeight.w600,
+                            color: color),
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                        Text('${h.count}× this period · ${catEmoji(h.category)}',
+                          style: const TextStyle(fontFamily: 'DMSans',
+                              fontSize: 10.5, color: AppColors.text3)),
+                        const SizedBox(height: 2),
+                        Text(_annualCompare(h.annualCost),
+                          style: TextStyle(fontFamily: 'DMSans', fontSize: 10,
+                              color: color.withValues(alpha: 0.70),
+                              fontStyle: FontStyle.italic)),
+                      ],
+                    )),
+                    const SizedBox(width: 8),
+                    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                      Text(formatInr(h.total, compact: true),
+                        style: TextStyle(fontFamily: 'DMMono', fontSize: 15,
+                            fontWeight: FontWeight.w700, color: color)),
+                      Text('₹${formatInr(h.annualCost, compact: true)}/yr',
+                        style: TextStyle(fontFamily: 'DMSans', fontSize: 10,
+                            color: color.withValues(alpha: 0.60))),
+                    ]),
+                  ]),
+                ),
+                if (i < habits.take(6).length - 1)
+                  const Divider(color: AppColors.border, height: 1),
+              ]);
+            }),
+            const SizedBox(height: 8),
+          ]),
+        ),
+      ],
+    ]);
   }
 }

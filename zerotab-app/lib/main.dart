@@ -154,9 +154,20 @@ Future<void> _registerFcmToken(String token) async {
   final session = Supabase.instance.client.auth.currentSession;
   if (session == null) return;
   try {
+    // Register via backend Edge Function (existing flow)
     await api.post(ApiConstants.fcmToken, data: {'token': token});
+  } catch (_) {}
+  try {
+    // ALSO upsert directly into profiles.fcm_token so SettleUp push
+    // notifications can find the token without going through Edge Functions.
+    final uid = Supabase.instance.client.auth.currentUser?.id;
+    if (uid != null) {
+      await Supabase.instance.client
+          .from('profiles')
+          .upsert({'id': uid, 'fcm_token': token});
+    }
   } catch (_) {
-    // Non-fatal best-effort registration.
+    // Non-fatal — SettleUp push degrades gracefully without token.
   }
 }
 

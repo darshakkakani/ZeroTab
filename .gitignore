@@ -5,6 +5,7 @@
 .env.production
 google-services.json
 GoogleService-Info.plist
+service-account.json       # Firebase Admin SDK — keep out of git!
 
 # ── Backend ────────────────────────────────────────────────
 zerotab-backend/node_modules/
