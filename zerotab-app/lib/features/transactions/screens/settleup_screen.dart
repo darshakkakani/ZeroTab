@@ -223,8 +223,9 @@ class SettleUpScreen extends ConsumerStatefulWidget {
 class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tab;
-  List<SettleGroup>    _groups = [];
-  List<IndividualSplit> _splits = [];
+  List<SettleGroup>    _groups       = [];
+  List<IndividualSplit> _splits      = [];
+  Map<String, int>     _groupBalances = {};  // groupId → user net balance (paise)
   bool _loading = true;
 
   RealtimeChannel? _groupsChannel;
@@ -250,8 +251,57 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
 
   // ── Initial data load ─────────────────────────────────────────
   Future<void> _loadAll() async {
+    if (mounted) setState(() => _loading = true);
     await Future.wait([_loadGroups(), _loadSplits()]);
+    await _loadGroupBalances();   // runs after groups are loaded
     if (mounted) setState(() => _loading = false);
+  }
+
+  // ── Compute user's net balance in EVERY group (parallel) ──────
+  // Positive = group owes user; Negative = user owes group.
+  // This feeds the hero card AND the per-group tile balance chip.
+  Future<void> _loadGroupBalances() async {
+    if (_groups.isEmpty) { _groupBalances = {}; return; }
+    final uid    = _uid;
+    final result = <String, int>{};
+
+    await Future.wait(_groups.map((group) async {
+      try {
+        // Parallel: expenses + member count for this group
+        final results = await Future.wait([
+          _db.from('settle_expenses')
+              .select('amount, paid_by, is_settlement, notes')
+              .eq('group_id', group.id),
+          _db.from('settle_group_members')
+              .select('user_id')
+              .eq('group_id', group.id),
+        ]);
+
+        final expList = (results[0] as List);
+        final n       = (results[1] as List).length;
+        if (n == 0) return;
+
+        int balance = 0;
+        for (final e in expList) {
+          final isSettl = e['is_settlement'] as bool? ?? false;
+          final amount  = e['amount']  as int? ?? 0;
+          final paidBy  = e['paid_by'] as String?;
+
+          if (isSettl) {
+            // Settlement reversal: paid_by paid the debt, notes = toId
+            if (paidBy == uid) balance += amount;
+            if ((e['notes'] as String?) == uid) balance -= amount;
+          } else {
+            // Regular expense: equal split
+            if (paidBy == uid) balance += amount;
+            balance -= amount ~/ n;
+          }
+        }
+        if (balance.abs() > 50) result[group.id] = balance;
+      } catch (_) {}
+    }));
+
+    if (mounted) setState(() => _groupBalances = result);
   }
 
   Future<void> _loadGroups() async {
@@ -386,9 +436,13 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Net position across ALL groups + friends
-    final allOwed = _totalOwed;
-    final allOwe  = _totalOwe;
+    // Net position across ALL groups + ALL individual friends
+    final groupOwed = _groupBalances.values
+        .where((v) => v > 0).fold(0, (s, v) => s + v);
+    final groupOwe  = _groupBalances.values
+        .where((v) => v < 0).fold(0, (s, v) => s + v.abs());
+    final allOwed = _totalOwed + groupOwed;   // individual + groups
+    final allOwe  = _totalOwe  + groupOwe;    // individual + groups
     final netAll  = allOwed - allOwe;
 
     return Scaffold(
@@ -443,8 +497,8 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
 
           const SizedBox(height: 12),
 
-          // ── Net balance hero card ────────────────────────────
-          if (!_loading && (allOwed > 0 || allOwe > 0))
+          // ── Net balance hero card — always visible ───────────
+          if (!_loading)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Container(
@@ -460,75 +514,97 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                       ? const Color(0xFF22C55E).withValues(alpha: 0.25)
                       : const Color(0xFFEF4444).withValues(alpha: 0.25)),
                 ),
-                child: Row(children: [
-                  // Left: owed
-                  if (allOwed > 0) Expanded(child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('YOU\'RE OWED', style: TextStyle(
-                          fontFamily: 'DMSans', fontSize: 9, letterSpacing: 0.4,
-                          color: AppColors.text3)),
-                      const SizedBox(height: 3),
-                      Text('+${fmtP(allOwed)}', style: const TextStyle(
-                          fontFamily: 'DMMono', fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF22C55E), letterSpacing: -0.5)),
-                    ],
-                  )),
-                  if (allOwed > 0 && allOwe > 0)
-                    Container(width: 1, height: 36,
-                        color: AppColors.border),
-                  // Right: you owe
-                  if (allOwe > 0) Expanded(child: Padding(
-                    padding: EdgeInsets.only(left: allOwed > 0 ? 12 : 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('YOU OWE', style: TextStyle(
-                            fontFamily: 'DMSans', fontSize: 9,
-                            letterSpacing: 0.4, color: AppColors.text3)),
-                        const SizedBox(height: 3),
-                        Text('−${fmtP(allOwe)}', style: const TextStyle(
-                            fontFamily: 'DMMono', fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFFEF4444), letterSpacing: -0.5)),
-                      ],
-                    ),
-                  )),
-                  const Spacer(),
-                  // Net badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: netAll >= 0
-                          ? const Color(0xFF22C55E).withValues(alpha: 0.12)
-                          : const Color(0xFFEF4444).withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                          color: netAll >= 0
-                              ? const Color(0xFF22C55E).withValues(alpha: 0.30)
-                              : const Color(0xFFEF4444).withValues(alpha: 0.30)),
-                    ),
-                    child: Column(children: [
-                      Text(
-                        netAll >= 0 ? '+${fmtP(netAll)}' : '−${fmtP(netAll.abs())}',
-                        style: TextStyle(fontFamily: 'DMMono', fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: netAll >= 0
-                              ? const Color(0xFF22C55E)
-                              : const Color(0xFFEF4444))),
-                      Text('net', style: const TextStyle(
-                          fontFamily: 'DMSans', fontSize: 9,
-                          color: AppColors.text3)),
-                    ]),
-                  ),
-                ]),
+                // ── All clear / active balance ────────────────
+                child: allOwed == 0 && allOwe == 0
+                    // All settled across every group + friend
+                    ? Row(children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF22C55E).withValues(alpha: 0.12),
+                            shape: BoxShape.circle),
+                          child: const Icon(Icons.check_circle_outline_rounded,
+                              color: Color(0xFF22C55E), size: 22)),
+                        const SizedBox(width: 12),
+                        const Expanded(child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('All settled up! ✨', style: TextStyle(
+                              fontFamily: 'DMSans', fontSize: 15,
+                              fontWeight: FontWeight.w700, color: AppColors.text)),
+                            SizedBox(height: 2),
+                            Text('No outstanding balances across any group or friend.',
+                              style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
+                                  color: AppColors.text3)),
+                          ],
+                        )),
+                      ])
+                    : Row(children: [
+                        if (allOwed > 0) Expanded(child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('YOU\'RE OWED', style: TextStyle(
+                                fontFamily: 'DMSans', fontSize: 9, letterSpacing: 0.4,
+                                color: AppColors.text3)),
+                            const SizedBox(height: 3),
+                            Text('+${fmtP(allOwed)}', style: const TextStyle(
+                                fontFamily: 'DMMono', fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF22C55E), letterSpacing: -0.5)),
+                            Text('${_groups.where((g) => (_groupBalances[g.id] ?? 0) > 0).length} group${_groups.where((g) => (_groupBalances[g.id] ?? 0) > 0).length != 1 ? "s" : ""}',
+                              style: const TextStyle(fontFamily: 'DMSans',
+                                  fontSize: 9.5, color: AppColors.text3)),
+                          ],
+                        )),
+                        if (allOwed > 0 && allOwe > 0)
+                          Container(width: 1, height: 40, margin: const EdgeInsets.symmetric(horizontal: 12),
+                              color: AppColors.border),
+                        if (allOwe > 0) Expanded(child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('YOU OWE', style: TextStyle(
+                                fontFamily: 'DMSans', fontSize: 9, letterSpacing: 0.4,
+                                color: AppColors.text3)),
+                            const SizedBox(height: 3),
+                            Text('−${fmtP(allOwe)}', style: const TextStyle(
+                                fontFamily: 'DMMono', fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFFEF4444), letterSpacing: -0.5)),
+                            Text('${_groups.where((g) => (_groupBalances[g.id] ?? 0) < 0).length} group${_groups.where((g) => (_groupBalances[g.id] ?? 0) < 0).length != 1 ? "s" : ""}',
+                              style: const TextStyle(fontFamily: 'DMSans',
+                                  fontSize: 9.5, color: AppColors.text3)),
+                          ],
+                        )),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: netAll >= 0
+                                ? const Color(0xFF22C55E).withValues(alpha: 0.12)
+                                : const Color(0xFFEF4444).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: netAll >= 0
+                                ? const Color(0xFF22C55E).withValues(alpha: 0.30)
+                                : const Color(0xFFEF4444).withValues(alpha: 0.30)),
+                          ),
+                          child: Column(children: [
+                            Text(netAll >= 0 ? '+${fmtP(netAll)}' : '−${fmtP(netAll.abs())}',
+                              style: TextStyle(fontFamily: 'DMMono', fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: netAll >= 0
+                                    ? const Color(0xFF22C55E)
+                                    : const Color(0xFFEF4444))),
+                            const Text('net', style: TextStyle(
+                                fontFamily: 'DMSans', fontSize: 9,
+                                color: AppColors.text3)),
+                          ]),
+                        ),
+                      ]),
               ),
             ),
 
-          if (!_loading && (allOwed > 0 || allOwe > 0))
-            const SizedBox(height: 10),
+          const SizedBox(height: 10),
 
           // ── Tab bar ─────────────────────────────────────────
           Padding(
@@ -576,6 +652,7 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                     children: [
                       _GroupsTab(
                         groups: _groups,
+                        groupBalances: _groupBalances,
                         onRefresh: _loadAll,
                         currentUid: _uid,
                       ),
@@ -665,11 +742,13 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
 // ════════════════════════════════════════════════════════════════
 
 class _GroupsTab extends StatelessWidget {
-  final List<SettleGroup> groups;
-  final VoidCallback onRefresh;
-  final String currentUid;
+  final List<SettleGroup>  groups;
+  final Map<String, int>   groupBalances;
+  final VoidCallback       onRefresh;
+  final String             currentUid;
   const _GroupsTab({
-    required this.groups, required this.onRefresh, required this.currentUid});
+    required this.groups, required this.groupBalances,
+    required this.onRefresh, required this.currentUid});
 
   @override
   Widget build(BuildContext context) {
@@ -689,10 +768,33 @@ class _GroupsTab extends StatelessWidget {
           fontFamily: 'DMSans', fontSize: 17,
           fontWeight: FontWeight.w700, color: AppColors.text)),
         const SizedBox(height: 8),
-        const Text('Create a group for trips, home, couple\nor any shared expense.',
+        const Text('Create a group for trips, flatmates,\ncouples or any shared expense.',
           style: TextStyle(fontFamily: 'DMSans', fontSize: 13,
               color: AppColors.text3, height: 1.5),
           textAlign: TextAlign.center),
+        const SizedBox(height: 24),
+        // Quick group templates
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          child: Wrap(spacing: 8, runSpacing: 8,
+            alignment: WrapAlignment.center,
+            children: [
+              ('✈️', 'Trip'), ('🏠', 'Flatmates'),
+              ('💑', 'Couple'), ('🍕', 'Dining'),
+              ('💼', 'Office'),
+            ].map((t) => GestureDetector(
+              onTap: () {}, // parent shows create sheet
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: AppColors.bg3,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.border)),
+                child: Text('${t.$1} ${t.$2}',
+                  style: const TextStyle(fontFamily: 'DMSans',
+                      fontSize: 12, color: AppColors.text2))),
+            )).toList()),
+        ),
       ]);
     }
 
@@ -701,6 +803,7 @@ class _GroupsTab extends StatelessWidget {
       itemCount: groups.length,
       itemBuilder: (_, i) => _GroupTile(
         group: groups[i],
+        userBalance: groupBalances[groups[i].id] ?? 0,
         currentUid: currentUid,
         onRefresh: onRefresh,
       ),
@@ -710,10 +813,12 @@ class _GroupsTab extends StatelessWidget {
 
 class _GroupTile extends StatefulWidget {
   final SettleGroup group;
-  final String currentUid;
+  final int         userBalance; // positive = owed, negative = owes
+  final String      currentUid;
   final VoidCallback onRefresh;
   const _GroupTile({
-    required this.group, required this.currentUid, required this.onRefresh});
+    required this.group, required this.userBalance,
+    required this.currentUid, required this.onRefresh});
   @override
   State<_GroupTile> createState() => _GroupTileState();
 }
@@ -815,7 +920,49 @@ class _GroupTileState extends State<_GroupTile> {
                 ]),
               ],
             )),
-            Icon(Icons.chevron_right_rounded, color: _color, size: 18),
+            // ── User balance chip ──────────────────────────────
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Icon(Icons.chevron_right_rounded, color: _color, size: 18),
+              const SizedBox(height: 4),
+              Builder(builder: (_) {
+                final bal = widget.userBalance;
+                if (bal == 0 && _loaded) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.green.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(6)),
+                    child: const Text('✓ settled',
+                      style: TextStyle(fontFamily: 'DMSans', fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.green)));
+                } else if (bal > 0) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF22C55E).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6)),
+                    child: Text('+${fmtP(bal)}',
+                      style: const TextStyle(fontFamily: 'DMMono',
+                          fontSize: 10, fontWeight: FontWeight.w700,
+                          color: Color(0xFF22C55E))));
+                } else if (bal < 0) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444).withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(6)),
+                    child: Text('−${fmtP(bal.abs())}',
+                      style: const TextStyle(fontFamily: 'DMMono',
+                          fontSize: 10, fontWeight: FontWeight.w700,
+                          color: Color(0xFFEF4444))));
+                }
+                return const SizedBox.shrink();
+              }),
+            ]),
           ]),
 
           // ── Budget progress bar ──────────────────────────────
@@ -2608,19 +2755,45 @@ class _AddExpenseSheet extends StatefulWidget {
   State<_AddExpenseSheet> createState() => _AddExpenseSheetState();
 }
 
+// ── Item-level split order item ────────────────────────────────
+class _OrderItem {
+  final TextEditingController nameCtrl;
+  final TextEditingController amtCtrl;
+  Set<String> assignedTo; // member keys
+  _OrderItem({required this.assignedTo})
+      : nameCtrl = TextEditingController(),
+        amtCtrl  = TextEditingController();
+  void dispose() { nameCtrl.dispose(); amtCtrl.dispose(); }
+  double get amount => double.tryParse(amtCtrl.text) ?? 0;
+}
+
 class _AddExpenseSheetState extends State<_AddExpenseSheet> {
   final _titleCtrl  = TextEditingController();
   final _amountCtrl = TextEditingController();
   final _notesCtrl  = TextEditingController();
 
-  String _splitMode   = 'EQUAL';
+  String  _splitMode       = 'EQUAL';
   String? _paidBy;
-  bool _loading = false;
+  bool    _loading         = false;
+  bool    _restaurantMode  = false;   // item-level split mode
+  List<_OrderItem> _items  = [];
 
   @override
   void initState() {
     super.initState();
     _paidBy = widget.currentUid;
+    // Start with 2 blank items in restaurant mode
+    _resetItems();
+  }
+
+  void _resetItems() {
+    for (final item in _items) item.dispose();
+    final allKeys = widget.members
+        .where((m) => m.userId != null)
+        .map((m) => m.key)
+        .toSet();
+    _items = [_OrderItem(assignedTo: Set.from(allKeys)),
+               _OrderItem(assignedTo: Set.from(allKeys))];
   }
 
   @override
@@ -2628,30 +2801,79 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
     _titleCtrl.dispose();
     _amountCtrl.dispose();
     _notesCtrl.dispose();
+    for (final item in _items) item.dispose();
     super.dispose();
   }
 
+  // ── Compute per-member shares for restaurant mode ─────────────
+  Map<String, int> _computeItemShares() {
+    final result = <String, int>{};
+    for (final item in _items) {
+      if (item.amount <= 0 || item.assignedTo.isEmpty) continue;
+      final perPerson = toP(item.amount) ~/ item.assignedTo.length;
+      for (final key in item.assignedTo) {
+        result[key] = (result[key] ?? 0) + perPerson;
+      }
+    }
+    return result;
+  }
+
+  int get _itemTotal => _items.fold(0, (s, i) => s + toP(i.amount));
+
   Future<void> _submit() async {
     final title = _titleCtrl.text.trim();
-    final amtStr = _amountCtrl.text.trim();
-    if (title.isEmpty || amtStr.isEmpty) return;
-    final amtRupees = double.tryParse(amtStr);
-    if (amtRupees == null || amtRupees <= 0) return;
-
     setState(() => _loading = true);
     try {
-      final amtPaise = toP(amtRupees);
-      await _db.from('settle_expenses').insert({
+      int amtPaise;
+      Map<String, int>? shares;
+
+      if (_restaurantMode) {
+        amtPaise = _itemTotal;
+        if (amtPaise <= 0) { setState(() => _loading = false); return; }
+        shares = _computeItemShares();
+      } else {
+        final amtStr    = _amountCtrl.text.trim();
+        if (title.isEmpty || amtStr.isEmpty) {
+          setState(() => _loading = false); return;
+        }
+        final amtRupees = double.tryParse(amtStr);
+        if (amtRupees == null || amtRupees <= 0) {
+          setState(() => _loading = false); return;
+        }
+        amtPaise = toP(amtRupees);
+      }
+
+      // 1. Insert expense
+      final expRes = await _db.from('settle_expenses').insert({
         'group_id':     widget.group.id,
-        'title':        title,
+        'title':        title.isEmpty ? 'Expense' : title,
         'amount':       amtPaise,
         'paid_by':      _paidBy,
-        'split_mode':   _splitMode,
+        'split_mode':   _restaurantMode ? 'EXACT' : _splitMode,
         'notes':        _notesCtrl.text.trim().isEmpty
                           ? null : _notesCtrl.text.trim(),
         'created_by':   widget.currentUid,
         'expense_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
-      });
+      }).select('id').single();
+
+      // 2. Insert per-member shares (for restaurant mode)
+      if (shares != null && shares.isNotEmpty) {
+        final expId = expRes['id'] as String;
+        await _db.from('settle_expense_shares').insert(
+          shares.entries.map((e) {
+            final member = widget.members
+                .firstWhere((m) => m.key == e.key,
+                    orElse: () => GroupMember(id: '', groupId: ''));
+            return {
+              'expense_id':   expId,
+              'member_id':    member.userId,
+              'display_name': member.name,
+              'amount':       e.value,
+            };
+          }).toList(),
+        );
+      }
+
       await widget.onAdded();
       if (mounted) Navigator.pop(context);
     } catch (e) {
@@ -2696,11 +2918,218 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
               fontFamily: 'DMSans', fontSize: 16,
               fontWeight: FontWeight.w700, color: AppColors.text)),
           ]),
-          const SizedBox(height: 16),
-          _field('What was it for?', _titleCtrl, 'Dinner, groceries, taxi...'),
           const SizedBox(height: 12),
-          _field('Amount (₹)', _amountCtrl, '0.00',
-              type: TextInputType.numberWithOptions(decimal: true)),
+
+          // ── Mode toggle: Quick Add vs Restaurant Mode ─────────
+          Row(children: [
+            Expanded(child: GestureDetector(
+              onTap: () => setState(() => _restaurantMode = false),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                height: 36,
+                decoration: BoxDecoration(
+                  color: !_restaurantMode
+                      ? widget.groupColor.withValues(alpha: 0.15)
+                      : AppColors.bg3,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: !_restaurantMode
+                          ? widget.groupColor.withValues(alpha: 0.40)
+                          : AppColors.border)),
+                alignment: Alignment.center,
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.bolt_rounded, size: 14,
+                      color: !_restaurantMode ? widget.groupColor : AppColors.text3),
+                  const SizedBox(width: 4),
+                  Text('Quick Add', style: TextStyle(fontFamily: 'DMSans',
+                      fontSize: 12, fontWeight: FontWeight.w600,
+                      color: !_restaurantMode ? widget.groupColor : AppColors.text3)),
+                ]),
+              ),
+            )),
+            const SizedBox(width: 8),
+            Expanded(child: GestureDetector(
+              onTap: () => setState(() { _restaurantMode = true; _resetItems(); }),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                height: 36,
+                decoration: BoxDecoration(
+                  color: _restaurantMode
+                      ? const Color(0xFFF59E0B).withValues(alpha: 0.15)
+                      : AppColors.bg3,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: _restaurantMode
+                          ? const Color(0xFFF59E0B).withValues(alpha: 0.40)
+                          : AppColors.border)),
+                alignment: Alignment.center,
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Text('🍽️', style: TextStyle(fontSize: 13)),
+                  const SizedBox(width: 4),
+                  Text('Item Split', style: TextStyle(fontFamily: 'DMSans',
+                      fontSize: 12, fontWeight: FontWeight.w600,
+                      color: _restaurantMode
+                          ? const Color(0xFFF59E0B) : AppColors.text3)),
+                ]),
+              ),
+            )),
+          ]),
+          const SizedBox(height: 14),
+
+          if (!_restaurantMode) ...[
+            _field('What was it for?', _titleCtrl, 'Dinner, groceries, taxi...'),
+            const SizedBox(height: 12),
+            _field('Amount (₹)', _amountCtrl, '0.00',
+                type: const TextInputType.numberWithOptions(decimal: true)),
+          ] else ...[
+            // ── Restaurant Mode: item-level assignment ─────────
+            _field('Group/occasion name', _titleCtrl, 'Restaurant dinner, movie night...'),
+            const SizedBox(height: 12),
+            const Text('ITEMS & WHO ORDERED', style: TextStyle(
+                fontFamily: 'DMSans', fontSize: 10,
+                fontWeight: FontWeight.w600, letterSpacing: 0.4,
+                color: AppColors.text3)),
+            const SizedBox(height: 8),
+            ..._items.asMap().entries.map((entry) {
+              final i    = entry.key;
+              final item = entry.value;
+              final activeMembers = widget.members
+                  .where((m) => m.userId != null).toList();
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.bg3,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Expanded(child: _field('', item.nameCtrl,
+                          'Item name (e.g. Butter Chicken)')),
+                      const SizedBox(width: 8),
+                      SizedBox(width: 80, child: _field('', item.amtCtrl, '₹',
+                          type: const TextInputType.numberWithOptions(decimal: true))),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () => setState(() {
+                          _items[i].dispose();
+                          _items.removeAt(i);
+                        }),
+                        child: const Icon(Icons.remove_circle_outline_rounded,
+                            color: AppColors.red, size: 18)),
+                    ]),
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 6, runSpacing: 4,
+                      children: activeMembers.map((m) {
+                        final key    = m.key;
+                        final active = item.assignedTo.contains(key);
+                        return GestureDetector(
+                          onTap: () => setState(() {
+                            if (active) item.assignedTo.remove(key);
+                            else item.assignedTo.add(key);
+                          }),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 100),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: active
+                                  ? widget.groupColor.withValues(alpha: 0.20)
+                                  : AppColors.bg4,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                  color: active
+                                      ? widget.groupColor.withValues(alpha: 0.50)
+                                      : AppColors.border)),
+                            child: Text(
+                              m.userId == widget.currentUid ? 'You' : m.name,
+                              style: TextStyle(fontFamily: 'DMSans',
+                                  fontSize: 10.5, fontWeight: FontWeight.w600,
+                                  color: active ? widget.groupColor
+                                      : AppColors.text3)),
+                          ),
+                        );
+                      }).toList()),
+                  ],
+                ),
+              );
+            }),
+            GestureDetector(
+              onTap: () => setState(() {
+                final allKeys = widget.members
+                    .where((m) => m.userId != null).map((m) => m.key).toSet();
+                _items.add(_OrderItem(assignedTo: Set.from(allKeys)));
+              }),
+              child: Container(
+                height: 36, width: double.infinity,
+                decoration: BoxDecoration(
+                  color: AppColors.bg3,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.30))),
+                alignment: Alignment.center,
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.add_rounded,
+                      color: Color(0xFFF59E0B), size: 16),
+                  SizedBox(width: 5),
+                  Text('Add Item', style: TextStyle(fontFamily: 'DMSans',
+                      fontSize: 12, fontWeight: FontWeight.w600,
+                      color: Color(0xFFF59E0B))),
+                ]),
+              ),
+            ),
+            // ── Per-person totals preview ──────────────────────
+            if (_itemTotal > 0) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF59E0B).withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.25))),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                    const Text('PER PERSON', style: TextStyle(
+                        fontFamily: 'DMSans', fontSize: 9.5,
+                        fontWeight: FontWeight.w600, letterSpacing: 0.4,
+                        color: AppColors.text3)),
+                    Text('Total: ${fmtP(_itemTotal)}',
+                      style: const TextStyle(fontFamily: 'DMMono',
+                          fontSize: 11, fontWeight: FontWeight.w700,
+                          color: Color(0xFFF59E0B))),
+                  ]),
+                  const SizedBox(height: 6),
+                  ..._computeItemShares().entries.map((e) {
+                    final member = widget.members
+                        .firstWhere((m) => m.key == e.key,
+                            orElse: () => GroupMember(
+                                id: '', groupId: '',
+                                displayName: e.key));
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
+                      child: Row(children: [
+                        Text(
+                          member.userId == widget.currentUid
+                              ? 'You' : member.name,
+                          style: const TextStyle(fontFamily: 'DMSans',
+                              fontSize: 12, color: AppColors.text)),
+                        const Spacer(),
+                        Text(fmtP(e.value),
+                          style: const TextStyle(fontFamily: 'DMMono',
+                              fontSize: 12, fontWeight: FontWeight.w700,
+                              color: Color(0xFFF59E0B))),
+                      ]),
+                    );
+                  }),
+                ]),
+              ),
+            ],
+          ],
           const SizedBox(height: 14),
 
           // Paid by
