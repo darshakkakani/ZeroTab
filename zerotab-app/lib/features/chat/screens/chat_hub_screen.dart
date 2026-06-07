@@ -172,17 +172,31 @@ class _ChatHubScreenState extends ConsumerState<ChatHubScreen> {
                     const SizedBox(height: 28),
 
                     // ── Chat history ────────────────────────
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Recent Conversations',
-                        style: TextStyle(
-                          fontFamily: 'DMSans', fontSize: 16,
-                          fontWeight: FontWeight.w700, color: AppColors.text,
-                          letterSpacing: -0.3,
+                    Row(children: [
+                      const Expanded(
+                        child: Text(
+                          'Recent Conversations',
+                          style: TextStyle(
+                            fontFamily: 'DMSans', fontSize: 16,
+                            fontWeight: FontWeight.w700, color: AppColors.text,
+                            letterSpacing: -0.3,
+                          ),
                         ),
                       ),
-                    ),
+                      GestureDetector(
+                        onTap: () => ref.invalidate(chatSessionsProvider),
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: AppColors.bg3,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: const Icon(Icons.refresh_rounded,
+                              color: AppColors.text3, size: 16),
+                        ),
+                      ),
+                    ]),
                     const SizedBox(height: 12),
                     sessionsAsync.when(
                       loading: () => const Center(

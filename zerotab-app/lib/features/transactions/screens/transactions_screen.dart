@@ -690,34 +690,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           physics: const BouncingScrollPhysics(),
           slivers: [
 
-            // ── Header ──────────────────────────────────
+            // ── Header — title only ──────────────────────
             SliverToBoxAdapter(child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Row(children: [
-                const Expanded(
-                  child: Text('Spend', style: TextStyle(
-                    fontFamily: 'DMSans', fontSize: 24,
-                    fontWeight: FontWeight.w700, letterSpacing: -0.8, color: AppColors.text)),
-                ),
-                // Period selector chip
-                GestureDetector(
-                  onTap: _showPeriodSheet,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppColors.accentSoft,
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                      border: Border.all(color: AppColors.accent.withOpacity(0.22)),
-                    ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Text(_periodLabel, style: const TextStyle(fontFamily: 'DMSans', fontSize: 12,
-                        fontWeight: FontWeight.w500, color: AppColors.accent2)),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: AppColors.accent2),
-                    ]),
-                  ),
-                ),
-              ]),
+              child: const Text('Spend', style: TextStyle(
+                fontFamily: 'DMSans', fontSize: 24,
+                fontWeight: FontWeight.w700, letterSpacing: -0.8,
+                color: AppColors.text)),
             )),
 
             SliverToBoxAdapter(child: const SizedBox(height: 12)),
@@ -763,7 +742,40 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               );
             })),
 
-            SliverToBoxAdapter(child: const SizedBox(height: 10)),
+            // ── Transactions section header ──────────────
+            // Period selector lives HERE (not in the page header)
+            // so the top stays clean and filter lives close to the data.
+            SliverToBoxAdapter(child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+              child: Row(children: [
+                const Text('Transactions', style: TextStyle(
+                  fontFamily: 'DMSans', fontSize: 16,
+                  fontWeight: FontWeight.w700, letterSpacing: -0.4,
+                  color: AppColors.text)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: _showPeriodSheet,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.accentSoft,
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      border: Border.all(
+                          color: AppColors.accent.withValues(alpha: 0.22)),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Text(_periodLabel, style: const TextStyle(
+                        fontFamily: 'DMSans', fontSize: 12,
+                        fontWeight: FontWeight.w500, color: AppColors.accent2)),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.keyboard_arrow_down_rounded,
+                          size: 14, color: AppColors.accent2),
+                    ]),
+                  ),
+                ),
+              ]),
+            )),
 
             // ── Search bar ───────────────────────────────
             SliverToBoxAdapter(child: Padding(

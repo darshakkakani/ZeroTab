@@ -46,20 +46,28 @@ class SettleGroup {
 
 class GroupMember {
   final String id, groupId;
-  final String? userId, displayName, phone;
+  final String? userId, displayName, phone, profileName;
   const GroupMember({
     required this.id, required this.groupId,
-    this.userId, this.displayName, this.phone,
+    this.userId, this.displayName, this.phone, this.profileName,
   });
-  factory GroupMember.fromJson(Map<String, dynamic> j) => GroupMember(
-    id: j['id'] as String,
-    groupId: j['group_id'] as String,
-    userId: j['user_id'] as String?,
-    displayName: j['display_name'] as String?,
-    phone: j['phone'] as String?,
-  );
-  String get name => displayName ?? phone ?? 'Unknown';
+  factory GroupMember.fromJson(Map<String, dynamic> j) {
+    // Handle profile JOIN result: j['profiles'] may be a Map or null
+    final profile = j['profiles'] as Map<String, dynamic>?;
+    return GroupMember(
+      id:          j['id'] as String,
+      groupId:     j['group_id'] as String,
+      userId:      j['user_id'] as String?,
+      displayName: j['display_name'] as String?,
+      phone:       j['phone'] as String?,
+      profileName: profile?['name'] as String?,
+    );
+  }
+  // Prefer: profile name → display_name → phone → 'You/Unknown'
+  String get name => profileName ?? displayName ?? phone ?? 'Unknown';
   String get initials => name.isNotEmpty ? name[0].toUpperCase() : '?';
+  // Stable key for balance tracking: userId for registered, row-id for external
+  String get key => userId ?? id;
 }
 
 class SettleExpense {
@@ -1045,21 +1053,34 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
 
   Future<void> _loadMembers() async {
     try {
+      // JOIN with profiles to get registered user names instead of showing "Unknown"
       final rows = await _db
           .from('settle_group_members')
-          .select()
-          .eq('group_id', widget.group.id);
+          .select('*, profiles(name, phone)')
+          .eq('group_id', widget.group.id)
+          .order('joined_at');
       _members = (rows as List)
           .map((r) => GroupMember.fromJson(r as Map<String, dynamic>))
           .toList();
     } catch (e) {
       debugPrint('loadMembers: $e');
+      // Fallback: fetch without JOIN
+      try {
+        final rows = await _db
+            .from('settle_group_members')
+            .select()
+            .eq('group_id', widget.group.id);
+        _members = (rows as List)
+            .map((r) => GroupMember.fromJson(r as Map<String, dynamic>))
+            .toList();
+      } catch (_) {}
     }
   }
 
   void _subscribeRealtime() {
     _channel = _db
         .channel('group-${widget.group.id}')
+        // ── Expenses real-time ────────────────────────────────
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
@@ -1075,28 +1096,67 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
             });
           },
         )
+        // ── Members real-time — auto-sync when member is added ─
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'settle_group_members',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'group_id',
+            value: widget.group.id,
+          ),
+          callback: (_) {
+            _loadMembers().then((_) {
+              if (mounted) setState(() {});
+            });
+          },
+        )
         .subscribe();
   }
 
   // ── Compute net balances for this group ───────────────────────
   Map<String, int> get _groupNetBalances {
+    if (_members.isEmpty) return {};
     final map = <String, int>{};
-    for (final exp in _expenses) {
+
+    for (final exp in _expenses.where((e) => !e.isSettlement)) {
       if (exp.paidBy == null) continue;
-      // The payer gets credited the full amount
+
+      // Payer gets credited the full expense amount
       map[exp.paidBy!] = (map[exp.paidBy!] ?? 0) + exp.amount;
-      // Each member gets debited their share equally
-      final perMember = exp.amount ~/ _members.length;
-      for (final m in _members) {
-        if (m.userId == null) continue;
-        map[m.userId!] = (map[m.userId!] ?? 0) - perMember;
+
+      // Equal split across ALL members (including those without userId)
+      final n = _members.length;
+      if (n == 0) continue;
+      final share     = exp.amount ~/ n;
+      final remainder = exp.amount % n;
+
+      for (int i = 0; i < _members.length; i++) {
+        final key        = _members[i].key;          // userId ?? row-id
+        final thisShare  = share + (i == 0 ? remainder : 0);
+        map[key] = (map[key] ?? 0) - thisShare;
       }
     }
+
+    // Settlements: reverse the debt between the two parties.
+    // paid_by = who paid; notes = who received (stored in _recordSettlement)
+    for (final exp in _expenses.where((e) => e.isSettlement)) {
+      if (exp.paidBy == null) continue;
+      map[exp.paidBy!] = (map[exp.paidBy!] ?? 0) + exp.amount;
+      if (exp.notes != null && exp.notes!.isNotEmpty) {
+        map[exp.notes!] = (map[exp.notes!] ?? 0) - exp.amount;
+      }
+    }
+
+    // Remove near-zero balances (rounding noise < ₹1)
+    map.removeWhere((_, v) => v.abs() < 100);
     return map;
   }
 
+  // All members including externals — use m.key for consistency
   Map<String, String> get _memberNames => {
-    for (final m in _members) if (m.userId != null) m.userId!: m.name,
+    for (final m in _members) m.key: m.name,
   };
 
   Color get _groupColor {
@@ -1254,13 +1314,14 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
   Future<void> _recordSettlement(
       String fromId, String toId, int amount) async {
     await _db.from('settle_expenses').insert({
-      'group_id':     widget.group.id,
-      'title':        'Settlement',
-      'amount':       amount,
-      'paid_by':      fromId,
+      'group_id':      widget.group.id,
+      'title':         'Settlement',
+      'amount':        amount,
+      'paid_by':       fromId,
+      'notes':         toId,        // recipient key — used in balance reversal
       'is_settlement': true,
-      'created_by':   widget.currentUid,
-      'expense_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
+      'created_by':    widget.currentUid,
+      'expense_date':  DateFormat('yyyy-MM-dd').format(DateTime.now()),
     });
     await _loadExpenses();
     if (mounted) setState(() {});
@@ -1589,19 +1650,49 @@ class _MembersTabState extends State<_MembersTab> {
     );
   }
 
+  // Normalize phone: strip spaces, dashes, country code variations
+  // so "+91 8780744229", "91 8780744229", "8780744229" all match.
+  static List<String> _phoneVariants(String raw) {
+    final cleaned = raw.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+    final variants = <String>{cleaned};
+    if (cleaned.startsWith('+91')) variants.add(cleaned.substring(3));
+    if (cleaned.startsWith('91') && cleaned.length == 12) {
+      variants.add(cleaned.substring(2));
+    }
+    if (!cleaned.startsWith('+') && cleaned.length == 10) {
+      variants.add('+91$cleaned');
+      variants.add('91$cleaned');
+    }
+    return variants.toList();
+  }
+
   Future<void> _doAddMember(String phoneOrName) async {
     String? userId;
     String displayName = phoneOrName;
     try {
       final isPhone = RegExp(r'^\+?[\d\s\-]{7,}$').hasMatch(phoneOrName);
-      final col = isPhone ? 'phone' : 'name';
-      final res = await _db.from('profiles')
-          .select('id, name, phone')
-          .eq(col, phoneOrName)
-          .maybeSingle();
-      if (res != null) {
-        userId = res['id'] as String?;
-        displayName = (res['name'] as String?) ?? phoneOrName;
+      if (isPhone) {
+        // Try all phone variants to handle +91 differences
+        for (final variant in _phoneVariants(phoneOrName)) {
+          final res = await _db.from('profiles')
+              .select('id, name, phone')
+              .eq('phone', variant)
+              .maybeSingle();
+          if (res != null) {
+            userId = res['id'] as String?;
+            displayName = (res['name'] as String?) ?? phoneOrName;
+            break;
+          }
+        }
+      } else {
+        final res = await _db.from('profiles')
+            .select('id, name')
+            .ilike('name', phoneOrName)
+            .maybeSingle();
+        if (res != null) {
+          userId = res['id'] as String?;
+          displayName = (res['name'] as String?) ?? phoneOrName;
+        }
       }
     } catch (_) {}
 
