@@ -477,10 +477,10 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                       horizontal: 12, vertical: 7),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(colors: [
-                      AppColors.green, Color(0xFF00C4A8)]),
+                      AppColors.accent, AppColors.accent2]),
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [BoxShadow(
-                      color: AppColors.green.withValues(alpha: 0.35),
+                      color: AppColors.accent.withValues(alpha: 0.35),
                       blurRadius: 10, offset: const Offset(0, 3))],
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -1061,10 +1061,10 @@ class _FriendsTabState extends State<_FriendsTab> {
           onTap: widget.onAddSplit,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                  colors: [AppColors.green, Color(0xFF00C4A8)]),
-              borderRadius: BorderRadius.circular(20),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                  colors: [AppColors.accent, AppColors.accent2]),
+              borderRadius: BorderRadius.all(Radius.circular(20)),
             ),
             child: const Text('Add a Split',
               style: TextStyle(fontFamily: 'DMSans', fontSize: 14,
@@ -3787,7 +3787,7 @@ class _AddSplitSheetState extends State<_AddSplitSheet> {
             child: ElevatedButton(
               onPressed: _loading ? null : _submit,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.green,
+                backgroundColor: AppColors.accent,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
