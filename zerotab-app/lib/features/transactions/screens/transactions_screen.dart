@@ -1646,7 +1646,7 @@ class _SmartToolsGrid extends StatelessWidget {
     final tiles = [
       _ToolTile(
         icon: Icons.donut_small_outlined,
-        color: const Color(0xFF7B2FFE),
+        color: AppColors.accent,
         label: 'FlowCast',
         sublabel: 'Envelope budgets',
         onTap: () => _openSheet(context, 'Flow Budgets',
@@ -1654,7 +1654,7 @@ class _SmartToolsGrid extends StatelessWidget {
       ),
       _ToolTile(
         icon: Icons.balance_outlined,
-        color: const Color(0xFF22C55E),
+        color: AppColors.green,
         label: 'Hisaab',
         sublabel: 'Shared expenses',
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -1664,7 +1664,7 @@ class _SmartToolsGrid extends StatelessWidget {
       ),
       _ToolTile(
         icon: Icons.wifi_tethering_rounded,
-        color: const Color(0xFF00CFDE),
+        color: AppColors.teal,
         label: 'Radar',
         sublabel: subCount > 0 ? '$subCount drains found' : 'Detect drains',
         onTap: () => _openSheet(context, 'Bill Radar',
@@ -1672,7 +1672,7 @@ class _SmartToolsGrid extends StatelessWidget {
       ),
       _ToolTile(
         icon: Icons.insights_rounded,
-        color: const Color(0xFFF59E0B),
+        color: AppColors.gold,
         label: 'Patterns',
         sublabel: topHabit != null
             ? '${topHabit.name}: ${formatInr(topHabit.total, compact: true)}'
@@ -1845,7 +1845,7 @@ class _HabitsDetail extends StatelessWidget {
         : null;
 
     const timeColors = {
-      'Morning':   Color(0xFFF59E0B),
+      'Morning':   AppColors.gold,
       'Afternoon': Color(0xFFFF6B5B),
       'Evening':   Color(0xFF7B5FFF),
       'Night':     Color(0xFF00C4A8),
@@ -1909,11 +1909,16 @@ class _HabitsDetail extends StatelessWidget {
                 color: (timeColors[peakTime] ?? AppColors.accent)
                     .withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8)),
-              child: Text(
-                '💡 You spend most in $peakTime${peakDay != null ? " · Highest on ${peakDay}s" : ""}',
-                style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
-                    color: timeColors[peakTime] ?? AppColors.accent,
-                    height: 1.4)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.lightbulb_outline, size: 13,
+                    color: timeColors[peakTime] ?? AppColors.accent),
+                const SizedBox(width: 6),
+                Flexible(child: Text(
+                  'You spend most in $peakTime${peakDay != null ? " · Highest on ${peakDay}s" : ""}',
+                  style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
+                      color: timeColors[peakTime] ?? AppColors.accent,
+                      height: 1.4))),
+              ]),
             ),
           ]),
         ),
@@ -1976,7 +1981,7 @@ class _HabitsDetail extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               const Icon(Icons.insights_rounded,
-                  color: Color(0xFFF59E0B), size: 32),
+                  color: AppColors.gold, size: 32),
               const SizedBox(height: 12),
               const Text('No patterns yet',
                 style: TextStyle(fontFamily: 'DMSans', fontSize: 15,
@@ -2001,7 +2006,7 @@ class _HabitsDetail extends StatelessWidget {
             border: Border.all(color: AppColors.border)),
           child: Row(children: [
             const Icon(Icons.tips_and_updates_outlined,
-                color: Color(0xFFF59E0B), size: 16),
+                color: AppColors.gold, size: 16),
             const SizedBox(width: 8),
             const Expanded(child: Text(
               'Visit any merchant 2+ times to see spending habit cards here.',

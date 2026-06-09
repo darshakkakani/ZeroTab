@@ -21,7 +21,7 @@ class InsightCard extends StatelessWidget {
             colors: [Color(0xFF100820), Color(0xFF07060F)],
           ),
           borderRadius: BorderRadius.circular(AppRadius.xxl),
-          border: Border.all(color: const Color(0x287B2FFE)),
+          border: Border.all(color: const Color(0x287B5FFF)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

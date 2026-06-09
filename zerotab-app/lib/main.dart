@@ -236,7 +236,7 @@ class StartupErrorApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       home: Scaffold(
-        backgroundColor: const Color(0xFF140C0C),
+        backgroundColor: AppColors.bgVoid,
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(24),

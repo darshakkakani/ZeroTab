@@ -870,7 +870,7 @@ class _OtpPainter extends CustomPainter {
       Offset(cx, cy),
       70,
       Paint()
-        ..color = const Color(0xFF00C9B1).withOpacity(0.10)
+        ..color = AppColors.teal.withOpacity(0.10)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 36),
     );
 
@@ -892,7 +892,7 @@ class _OtpPainter extends CustomPainter {
         Offset(cx, cy),
         r,
         Paint()
-          ..color = const Color(0xFF00C9B1).withOpacity(alpha)
+          ..color = AppColors.teal.withOpacity(alpha)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.3,
       );
@@ -913,7 +913,7 @@ class _OtpPainter extends CustomPainter {
           Offset(px, py),
           2.0,
           Paint()..color =
-              const Color(0xFF00C9B1).withOpacity(0.28 + 0.65 * bright),
+              AppColors.teal.withOpacity(0.28 + 0.65 * bright),
         );
       }
     }
@@ -956,7 +956,7 @@ class _OtpPainter extends CustomPainter {
     // ── 9. Rim glow ───────────────────────────────────────────────────
     _drawShield(canvas, sL, sT, sR, sB, cx,
         Paint()
-          ..color = const Color(0xFF00C9B1).withOpacity(0.30)
+          ..color = AppColors.teal.withOpacity(0.30)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 5.5
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6));
@@ -964,14 +964,14 @@ class _OtpPainter extends CustomPainter {
     // ── 10. Crisp border ──────────────────────────────────────────────
     _drawShield(canvas, sL, sT, sR, sB, cx,
         Paint()
-          ..color = const Color(0xFF00C9B1).withOpacity(0.68)
+          ..color = AppColors.teal.withOpacity(0.68)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.2);
 
     // ── 11. Inner concentric shield ring ──────────────────────────────
     _drawShield(canvas, sL + 8, sT + 8, sR - 8, sB - 10, cx,
         Paint()
-          ..color = const Color(0xFF00C9B1).withOpacity(0.12)
+          ..color = AppColors.teal.withOpacity(0.12)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.0);
 
@@ -981,7 +981,7 @@ class _OtpPainter extends CustomPainter {
       Offset(cx, cy + 2),
       18,
       Paint()
-        ..color = const Color(0xFF00C9B1).withOpacity(0.08 * breathe)
+        ..color = AppColors.teal.withOpacity(0.08 * breathe)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14),
     );
 
@@ -998,7 +998,7 @@ class _OtpPainter extends CustomPainter {
     canvas.drawPath(
       checkPath,
       Paint()
-        ..color = const Color(0xFF00C9B1).withOpacity(checkAlpha * 0.35)
+        ..color = AppColors.teal.withOpacity(checkAlpha * 0.35)
         ..strokeWidth = 9
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
@@ -1020,7 +1020,7 @@ class _OtpPainter extends CustomPainter {
     canvas.drawPath(
       checkPath,
       Paint()
-        ..color = const Color(0xFF00C9B1).withOpacity(checkAlpha)
+        ..color = AppColors.teal.withOpacity(checkAlpha)
         ..strokeWidth = 3.2
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round

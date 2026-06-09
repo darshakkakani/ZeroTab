@@ -12,9 +12,7 @@ import '../../../shared/services/providers_refresh.dart';
 import '../../../shared/services/api_service.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../shared/widgets/zt_card.dart';
-
-// ── Finance-themed emoji avatars ─────────────────────────────
-const _avatarEmojis = ['🦁', '🦊', '🐯', '🦋', '🌟', '⚡', '🎯', '🌊', '🏆', '💎', '🔥', '🚀'];
+import '../../../shared/widgets/zt_states.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -234,8 +232,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   error: (_, __) => const SizedBox.shrink(),
                   data: (profile) {
                     final dispName    = _displayName(profile?.name);
-                    final avatarLabel = _selectedEmoji ?? (dispName.isNotEmpty ? dispName[0].toUpperCase() : 'U');
-                    final showEmoji   = _selectedEmoji != null;
                     final authUser    = Supabase.instance.client.auth.currentUser;
                     final email       = profile?.email ?? authUser?.email ?? '';
                     final phone       = profile?.phone ?? authUser?.phone ?? '';
@@ -245,27 +241,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       padding: const EdgeInsets.all(16),
                       decoration: AppDecorations.card(radius: AppRadius.xl),
                       child: Row(children: [
-                        // Avatar — emoji or initial
-                        Container(
-                          width: 52,
-                          height: 52,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AppColors.accentSoft,
-                            border: Border.all(color: AppColors.accent.withOpacity(0.2)),
-                          ),
-                          alignment: Alignment.center,
-                          child: showEmoji
-                              ? Text(avatarLabel, style: const TextStyle(fontSize: 24))
-                              : Text(
-                                  avatarLabel,
-                                  style: const TextStyle(
-                                    fontFamily: 'DMSans',
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.accent2,
-                                  ),
-                                ),
+                        // Monogram avatar on a brand gradient
+                        ZtAvatar(
+                          name: dispName.isNotEmpty ? dispName : 'U',
+                          size: 52,
+                          gradientIndex: int.tryParse(_selectedEmoji ?? '') ?? -1,
                         ),
                         const SizedBox(width: 14),
                         Expanded(
@@ -594,7 +574,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         _InfoRow(label: 'App Version', value: _appVersion.isEmpty ? 'v1.0.0' : _appVersion),
                         const Divider(color: AppColors.border, height: 1),
                         _ActionRow(
-                          label: 'Rate ZeroTab ⭐',
+                          label: 'Rate ZeroTab',
                           color: AppColors.gold,
                           icon: Icons.star_outline_rounded,
                           onTap: () => _launchUrl('https://play.google.com/store'),
@@ -774,55 +754,44 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
           ),
           const SizedBox(height: 20),
 
-          // ── Avatar emoji picker ──
-          _label('Choose Avatar'),
+          // ── Avatar colour picker (monogram gradient) ──
+          _label('Avatar colour'),
           const SizedBox(height: 10),
-          GridView.count(
-            crossAxisCount: 6,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            childAspectRatio: 1,
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
             children: [
-              // None option
+              // Auto — derive gradient from the name
               GestureDetector(
                 onTap: () => setState(() => _emoji = null),
                 child: Container(
+                  width: 46, height: 46,
                   decoration: BoxDecoration(
-                    color: _emoji == null ? AppColors.accentSoft : AppColors.bg3,
-                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    color: AppColors.bg3,
+                    shape: BoxShape.circle,
                     border: Border.all(
                       color: _emoji == null ? AppColors.accent : AppColors.border,
-                      width: _emoji == null ? 2 : 1,
-                    ),
+                      width: _emoji == null ? 2 : 1),
                   ),
                   alignment: Alignment.center,
-                  child: Text(
-                    'A',
-                    style: TextStyle(
-                      fontFamily: 'DMSans',
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: _emoji == null ? AppColors.accent2 : AppColors.text3,
-                    ),
-                  ),
+                  child: const Text('Auto', style: TextStyle(
+                    fontFamily: 'DMSans', fontSize: 10,
+                    fontWeight: FontWeight.w600, color: AppColors.text3)),
                 ),
               ),
-              ..._avatarEmojis.map((e) => GestureDetector(
-                onTap: () => setState(() => _emoji = e),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 120),
+              ...List.generate(ZtAvatar.gradients.length, (i) => GestureDetector(
+                onTap: () => setState(() => _emoji = '$i'),
+                child: Container(
+                  width: 46, height: 46,
                   decoration: BoxDecoration(
-                    color: _emoji == e ? AppColors.accentSoft : AppColors.bg3,
-                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: ZtAvatar.gradients[i],
+                      begin: Alignment.topLeft, end: Alignment.bottomRight),
                     border: Border.all(
-                      color: _emoji == e ? AppColors.accent : AppColors.border,
-                      width: _emoji == e ? 2 : 1,
-                    ),
+                      color: _emoji == '$i' ? Colors.white : Colors.transparent,
+                      width: 2.5),
                   ),
-                  alignment: Alignment.center,
-                  child: Text(e, style: const TextStyle(fontSize: 22)),
                 ),
               )),
             ],

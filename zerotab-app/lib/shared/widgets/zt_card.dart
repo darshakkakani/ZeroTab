@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_motion.dart';
 
 /// Standard ZeroTab card — bg3 background with 1px border.
 class ZTCard extends StatelessWidget {
@@ -32,7 +34,8 @@ class ZTCard extends StatelessWidget {
   }
 }
 
-/// Accent gradient card (e.g. net-worth card, insight card)
+/// Accent gradient card (e.g. net-worth card, insight card).
+/// Defaults align to the canonical hero gradient + accent border.
 class ZTAccentCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
@@ -45,7 +48,7 @@ class ZTAccentCard extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.all(20),
     this.gradientColors = const [Color(0xFF16133A), Color(0xFF0E0C25)],
-    this.borderColor = const Color(0x337B6FFF),
+    this.borderColor = const Color(0x337B5FFF),
     this.radius = AppRadius.xl,
   });
 
@@ -67,35 +70,33 @@ class ZTAccentCard extends StatelessWidget {
   }
 }
 
-/// Pill / badge widget
+/// Pill / badge widget. Text-only (no emoji) — use ZtIcon for symbols.
 class ZTPill extends StatelessWidget {
   final String label;
   final Color color;
   final Color bgColor;
-  final String? prefixEmoji;
 
   const ZTPill({
     super.key,
     required this.label,
     required this.color,
     required this.bgColor,
-    this.prefixEmoji,
   });
 
-  const ZTPill.green({super.key, required this.label, this.prefixEmoji})
-    : color = AppColors.green, bgColor = AppColors.greenSoft;
+  const ZTPill.green({super.key, required this.label})
+      : color = AppColors.green, bgColor = AppColors.greenSoft;
 
-  const ZTPill.red({super.key, required this.label, this.prefixEmoji})
-    : color = AppColors.red, bgColor = AppColors.redSoft;
+  const ZTPill.red({super.key, required this.label})
+      : color = AppColors.red, bgColor = AppColors.redSoft;
 
-  const ZTPill.amber({super.key, required this.label, this.prefixEmoji})
-    : color = AppColors.amber, bgColor = AppColors.amberSoft;
+  const ZTPill.amber({super.key, required this.label})
+      : color = AppColors.gold, bgColor = AppColors.goldSoft;
 
-  const ZTPill.accent({super.key, required this.label, this.prefixEmoji})
-    : color = AppColors.accent2, bgColor = AppColors.accentSoft;
+  const ZTPill.accent({super.key, required this.label})
+      : color = AppColors.accent2, bgColor = AppColors.accentSoft;
 
-  const ZTPill.teal({super.key, required this.label, this.prefixEmoji})
-    : color = AppColors.teal, bgColor = AppColors.tealSoft;
+  const ZTPill.teal({super.key, required this.label})
+      : color = AppColors.teal, bgColor = AppColors.tealSoft;
 
   @override
   Widget build(BuildContext context) {
@@ -103,31 +104,23 @@ class ZTPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (prefixEmoji != null) ...[
-            Text(prefixEmoji!, style: const TextStyle(fontSize: 11)),
-            const SizedBox(width: 4),
-          ],
-          Text(
-            label,
-            style: TextStyle(
-              fontFamily: 'DMSans',
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: color,
-            ),
-          ),
-        ],
+      child: Text(
+        label,
+        style: TextStyle(
+          fontFamily: 'DMSans',
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
       ),
     );
   }
 }
 
-/// Shimmer loading placeholder
+/// Animated shimmer placeholder. API unchanged (width/height/radius) so every
+/// existing skeleton call site is upgraded to a real moving shimmer for free.
 class ZTShimmerBox extends StatelessWidget {
   final double width;
   final double height;
@@ -142,12 +135,17 @@ class ZTShimmerBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        color: AppColors.bg4,
-        borderRadius: BorderRadius.circular(radius),
+    return Shimmer.fromColors(
+      baseColor: AppColors.bg4,
+      highlightColor: const Color(0xFF2C2A4A),
+      period: AppMotion.shimmer,
+      child: Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: AppColors.bg4,
+          borderRadius: BorderRadius.circular(radius),
+        ),
       ),
     );
   }

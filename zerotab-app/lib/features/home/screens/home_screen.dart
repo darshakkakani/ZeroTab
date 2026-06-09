@@ -15,7 +15,7 @@ import '../widgets/insight_card.dart';
 import '../../../shared/widgets/ai_brain_icon.dart';
 
 // ── Orange warning colour (AppColors.amber == AppColors.gold → alias bug) ──
-const _kOrange = Color(0xFFFF8C42);
+const _kOrange = AppColors.gold;
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -209,25 +209,25 @@ class HomeScreen extends ConsumerWidget {
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [Color(0x157B2FFE), Color(0x0D00CFDE)],
+                            colors: [Color(0x157B5FFF), Color(0x0D00C4A8)],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
                           borderRadius: BorderRadius.circular(AppRadius.xl),
-                          border: Border.all(color: const Color(0x287B2FFE)),
+                          border: Border.all(color: const Color(0x287B5FFF)),
                         ),
                         child: Row(children: [
                           Container(
                             width: 40, height: 40,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF7B2FFE).withValues(alpha: 0.15),
+                              color: AppColors.accent.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(AppRadius.md),
                             ),
                             alignment: Alignment.center,
                             child: const Text('₹?',
                               style: TextStyle(fontFamily: 'DMMono',
                                   fontSize: 16, fontWeight: FontWeight.w700,
-                                  color: Color(0xFF7B2FFE))),
+                                  color: AppColors.accent)),
                           ),
                           const SizedBox(width: 12),
                           const Expanded(
@@ -241,12 +241,12 @@ class HomeScreen extends ConsumerWidget {
                                 SizedBox(height: 2),
                                 Text('Prepay loan or invest? Get the exact answer →',
                                   style: TextStyle(fontFamily: 'DMSans',
-                                      fontSize: 11, color: Color(0xFF00CFDE))),
+                                      fontSize: 11, color: AppColors.teal)),
                               ],
                             ),
                           ),
                           const Icon(Icons.arrow_forward_ios_rounded,
-                              size: 12, color: Color(0xFF7B2FFE)),
+                              size: 12, color: AppColors.accent),
                         ]),
                       ),
                     ),
@@ -473,6 +473,7 @@ class _NetWorthCardState extends State<_NetWorthCard>
                   letterSpacing: -1.0,
                   color: isNeg ? AppColors.red : AppColors.text,
                   height: 1.1,
+                  fontFeatures: const [FontFeature.tabularFigures(), FontFeature.liningFigures()],
                 ),
               );
             },
@@ -609,21 +610,21 @@ class _MonthSummaryStrip extends StatelessWidget {
       _StatChip(
         label: 'Income',
         value: formatInr(income, compact: true),
-        color: const Color(0xFF22C55E),
+        color: AppColors.green,
         icon: Icons.arrow_downward_rounded,
       ),
       const SizedBox(width: 8),
       _StatChip(
         label: 'Spend',
         value: formatInr(spend, compact: true),
-        color: const Color(0xFFEF4444),
+        color: AppColors.red,
         icon: Icons.arrow_upward_rounded,
       ),
       const SizedBox(width: 8),
       _StatChip(
         label: 'Saved',
         value: '${savings.toStringAsFixed(0)}%',
-        color: const Color(0xFF7B2FFE),
+        color: AppColors.accent,
         icon: Icons.savings_outlined,
       ),
     ]);
@@ -635,11 +636,11 @@ class _MonthSummaryStripEmpty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(children: [
-    _StatChip(label: 'Income', value: '—', color: const Color(0xFF22C55E), icon: Icons.arrow_downward_rounded),
+    _StatChip(label: 'Income', value: '—', color: AppColors.green, icon: Icons.arrow_downward_rounded),
     const SizedBox(width: 8),
-    _StatChip(label: 'Spend',  value: '—', color: const Color(0xFFEF4444), icon: Icons.arrow_upward_rounded),
+    _StatChip(label: 'Spend',  value: '—', color: AppColors.red, icon: Icons.arrow_upward_rounded),
     const SizedBox(width: 8),
-    _StatChip(label: 'Saved',  value: '—', color: const Color(0xFF7B2FFE), icon: Icons.savings_outlined),
+    _StatChip(label: 'Saved',  value: '—', color: AppColors.accent, icon: Icons.savings_outlined),
   ]);
 }
 
@@ -717,7 +718,7 @@ class _NotificationBell extends ConsumerWidget {
               child: Container(
                 width: 17, height: 17,
                 decoration: const BoxDecoration(
-                  color: Color(0xFF7B2FFE),
+                  color: AppColors.accent,
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
@@ -746,7 +747,7 @@ class _NotificationSheet extends ConsumerWidget {
       if (snap != null && snap.emiRatio > 0.35)
         _NotifItem(
           icon: Icons.warning_amber_rounded,
-          color: const Color(0xFFF59E0B),
+          color: AppColors.gold,
           title: 'High EMI burden',
           body: 'Your EMIs are ${(snap.emiRatio * 100).toStringAsFixed(0)}% of income — above the safe 35% threshold.',
           time: 'Today',
@@ -754,7 +755,7 @@ class _NotificationSheet extends ConsumerWidget {
       if (snap != null && snap.creditUtil > 0.5)
         _NotifItem(
           icon: Icons.credit_card_off_rounded,
-          color: const Color(0xFFEF4444),
+          color: AppColors.red,
           title: 'Credit utilisation high',
           body: 'Using ${(snap.creditUtil * 100).toStringAsFixed(0)}% of your credit limit. Keep it under 30%.',
           time: 'Today',
@@ -762,14 +763,14 @@ class _NotificationSheet extends ConsumerWidget {
       if (snap != null && snap.savingsRate < 0.10)
         _NotifItem(
           icon: Icons.savings_outlined,
-          color: const Color(0xFF7B2FFE),
+          color: AppColors.accent,
           title: 'Low savings rate',
           body: 'Saving only ${(snap.savingsRate * 100).toStringAsFixed(0)}% of income. Target: 20%+.',
           time: 'Today',
         ),
       _NotifItem(
         icon: Icons.auto_awesome_rounded,
-        color: const Color(0xFF00CFDE),
+        color: AppColors.teal,
         title: 'AI insight ready',
         body: 'Your weekly financial analysis is available. Tap to view.',
         time: 'This week',
@@ -807,12 +808,12 @@ class _NotificationSheet extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF7B2FFE).withValues(alpha: 0.15),
+                    color: AppColors.accent.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text('${items.length}',
                     style: const TextStyle(fontFamily: 'DMMono', fontSize: 11,
-                        fontWeight: FontWeight.w700, color: Color(0xFF7B2FFE))),
+                        fontWeight: FontWeight.w700, color: AppColors.accent)),
                 ),
             ]),
           ),
@@ -1349,7 +1350,7 @@ class _InvestmentSnapshotCard extends ConsumerWidget {
         addChip('Stocks', stocksVal, AppColors.accent);
         addChip('MF',     mfVal,     AppColors.teal);
         addChip('ETF',    etfVal,    const Color(0xFF4A9EFF));
-        addChip('Commod', commVal,   const Color(0xFFFFAA00));
+        addChip('Commod', commVal,   AppColors.gold);
 
         return GestureDetector(
           onTap: () => context.go('/investments'),
@@ -2270,12 +2271,12 @@ class _AskAiCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0x157B2FFE), Color(0x0D00CFDE)],
+            colors: [Color(0x157B5FFF), Color(0x0D00C4A8)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(AppRadius.xl),
-          border: Border.all(color: const Color(0x287B2FFE)),
+          border: Border.all(color: const Color(0x287B5FFF)),
         ),
         child: Row(children: [
           Container(
@@ -2286,8 +2287,8 @@ class _AskAiCard extends StatelessWidget {
                 begin: Alignment.topLeft, end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(AppRadius.md),
-              border: Border.all(color: const Color(0xFF7B2FFE), width: 1),
-              boxShadow: const [BoxShadow(color: Color(0x337B2FFE), blurRadius: 8)],
+              border: Border.all(color: AppColors.accent, width: 1),
+              boxShadow: const [BoxShadow(color: Color(0x337B5FFF), blurRadius: 8)],
             ),
             alignment: Alignment.center,
             child: const AiBrainIcon(size: 22),
@@ -2308,17 +2309,17 @@ class _AskAiCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: const Color(0x1A7B2FFE),
+                      color: const Color(0x1A7B5FFF),
                       borderRadius: BorderRadius.circular(AppRadius.pill),
-                      border: Border.all(color: const Color(0x407B2FFE)),
+                      border: Border.all(color: const Color(0x407B5FFF)),
                     ),
                     child: const Row(mainAxisSize: MainAxisSize.min, children: [
                       Text('Chat', style: TextStyle(
                         fontFamily: 'DMSans', fontSize: 10,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF00CFDE))),
+                        color: AppColors.teal)),
                       SizedBox(width: 3),
-                      Icon(Icons.arrow_forward_rounded, size: 10, color: Color(0xFF00CFDE)),
+                      Icon(Icons.arrow_forward_rounded, size: 10, color: AppColors.teal),
                     ]),
                   ),
                 ]),

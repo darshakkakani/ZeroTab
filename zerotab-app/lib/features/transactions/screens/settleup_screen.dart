@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/icons/zt_icons.dart';
 import '../../../core/utils/formatters.dart';
 
 // ── Supabase client shorthand ─────────────────────────────────
@@ -38,7 +39,7 @@ class SettleGroup {
     name: j['name'] as String,
     currency: (j['currency'] as String?) ?? 'INR',
     category: (j['category'] as String?) ?? 'general',
-    coverColor: (j['cover_color'] as String?) ?? '#7B2FFE',
+    coverColor: (j['cover_color'] as String?) ?? '#7B5FFF',
     description: j['description'] as String?,
     createdBy: j['created_by'] as String?,
     isArchived: (j['is_archived'] as bool?) ?? false,
@@ -401,7 +402,7 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
         content: Row(children: [
           Container(width: 6, height: 6,
             decoration: const BoxDecoration(
-                color: Color(0xFF22C55E), shape: BoxShape.circle)),
+                color: AppColors.green, shape: BoxShape.circle)),
           const SizedBox(width: 10),
           Expanded(child: Text('$fromName added ${fmtP(amount)} for $desc',
             style: const TextStyle(fontFamily: 'DMSans', fontSize: 13,
@@ -476,10 +477,10 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                       horizontal: 12, vertical: 7),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(colors: [
-                      Color(0xFF22C55E), Color(0xFF00C4A8)]),
+                      AppColors.green, Color(0xFF00C4A8)]),
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [BoxShadow(
-                      color: const Color(0xFF22C55E).withValues(alpha: 0.35),
+                      color: AppColors.green.withValues(alpha: 0.35),
                       blurRadius: 10, offset: const Offset(0, 3))],
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -511,8 +512,8 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                     begin: Alignment.topLeft, end: Alignment.bottomRight),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: netAll >= 0
-                      ? const Color(0xFF22C55E).withValues(alpha: 0.25)
-                      : const Color(0xFFEF4444).withValues(alpha: 0.25)),
+                      ? AppColors.green.withValues(alpha: 0.25)
+                      : AppColors.red.withValues(alpha: 0.25)),
                 ),
                 // ── All clear / active balance ────────────────
                 child: allOwed == 0 && allOwe == 0
@@ -521,15 +522,15 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF22C55E).withValues(alpha: 0.12),
+                            color: AppColors.green.withValues(alpha: 0.12),
                             shape: BoxShape.circle),
                           child: const Icon(Icons.check_circle_outline_rounded,
-                              color: Color(0xFF22C55E), size: 22)),
+                              color: AppColors.green, size: 22)),
                         const SizedBox(width: 12),
                         const Expanded(child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('All settled up! ✨', style: TextStyle(
+                            Text('All settled up!', style: TextStyle(
                               fontFamily: 'DMSans', fontSize: 15,
                               fontWeight: FontWeight.w700, color: AppColors.text)),
                             SizedBox(height: 2),
@@ -550,7 +551,7 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                             Text('+${fmtP(allOwed)}', style: const TextStyle(
                                 fontFamily: 'DMMono', fontSize: 22,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF22C55E), letterSpacing: -0.5)),
+                                color: AppColors.green, letterSpacing: -0.5)),
                             Text('${_groups.where((g) => (_groupBalances[g.id] ?? 0) > 0).length} group${_groups.where((g) => (_groupBalances[g.id] ?? 0) > 0).length != 1 ? "s" : ""}',
                               style: const TextStyle(fontFamily: 'DMSans',
                                   fontSize: 9.5, color: AppColors.text3)),
@@ -569,7 +570,7 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                             Text('−${fmtP(allOwe)}', style: const TextStyle(
                                 fontFamily: 'DMMono', fontSize: 22,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFFEF4444), letterSpacing: -0.5)),
+                                color: AppColors.red, letterSpacing: -0.5)),
                             Text('${_groups.where((g) => (_groupBalances[g.id] ?? 0) < 0).length} group${_groups.where((g) => (_groupBalances[g.id] ?? 0) < 0).length != 1 ? "s" : ""}',
                               style: const TextStyle(fontFamily: 'DMSans',
                                   fontSize: 9.5, color: AppColors.text3)),
@@ -581,20 +582,20 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                               horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
                             color: netAll >= 0
-                                ? const Color(0xFF22C55E).withValues(alpha: 0.12)
-                                : const Color(0xFFEF4444).withValues(alpha: 0.12),
+                                ? AppColors.green.withValues(alpha: 0.12)
+                                : AppColors.red.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: netAll >= 0
-                                ? const Color(0xFF22C55E).withValues(alpha: 0.30)
-                                : const Color(0xFFEF4444).withValues(alpha: 0.30)),
+                                ? AppColors.green.withValues(alpha: 0.30)
+                                : AppColors.red.withValues(alpha: 0.30)),
                           ),
                           child: Column(children: [
                             Text(netAll >= 0 ? '+${fmtP(netAll)}' : '−${fmtP(netAll.abs())}',
                               style: TextStyle(fontFamily: 'DMMono', fontSize: 14,
                                 fontWeight: FontWeight.w700,
                                 color: netAll >= 0
-                                    ? const Color(0xFF22C55E)
-                                    : const Color(0xFFEF4444))),
+                                    ? AppColors.green
+                                    : AppColors.red)),
                             const Text('net', style: TextStyle(
                                 fontFamily: 'DMSans', fontSize: 9,
                                 color: AppColors.text3)),
@@ -621,7 +622,7 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                 controller: _tab,
                 onTap: (_) => setState(() {}),
                 indicator: BoxDecoration(
-                  color: const Color(0xFF22C55E),
+                  color: AppColors.green,
                   borderRadius: BorderRadius.circular(17),
                 ),
                 indicatorSize: TabBarIndicatorSize.tab,
@@ -646,7 +647,7 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Color(0xFF22C55E)))
+                    strokeWidth: 2, color: AppColors.green))
                 : TabBarView(
                     controller: _tab,
                     children: [
@@ -757,11 +758,11 @@ class _GroupsTab extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: const Color(0xFF22C55E).withValues(alpha: 0.10),
+            color: AppColors.green.withValues(alpha: 0.10),
             shape: BoxShape.circle,
           ),
           child: const Icon(Icons.group_outlined,
-              color: Color(0xFF22C55E), size: 36),
+              color: AppColors.green, size: 36),
         ),
         const SizedBox(height: 18),
         const Text('No groups yet', style: TextStyle(
@@ -779,9 +780,9 @@ class _GroupsTab extends StatelessWidget {
           child: Wrap(spacing: 8, runSpacing: 8,
             alignment: WrapAlignment.center,
             children: [
-              ('✈️', 'Trip'), ('🏠', 'Flatmates'),
-              ('💑', 'Couple'), ('🍕', 'Dining'),
-              ('💼', 'Office'),
+              ('trip', 'Trip'), ('flatmates', 'Flatmates'),
+              ('couple', 'Couple'), ('dining', 'Dining'),
+              ('office', 'Office'),
             ].map((t) => GestureDetector(
               onTap: () {}, // parent shows create sheet
               child: Container(
@@ -790,9 +791,12 @@ class _GroupsTab extends StatelessWidget {
                   color: AppColors.bg3,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: AppColors.border)),
-                child: Text('${t.$1} ${t.$2}',
-                  style: const TextStyle(fontFamily: 'DMSans',
-                      fontSize: 12, color: AppColors.text2))),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(ZtIcons.groupType(t.$1), size: 13, color: AppColors.text2),
+                  const SizedBox(width: 6),
+                  Text(t.$2, style: const TextStyle(fontFamily: 'DMSans',
+                      fontSize: 12, color: AppColors.text2)),
+                ])),
             )).toList()),
         ),
       ]);
@@ -832,7 +836,7 @@ class _GroupTileState extends State<_GroupTile> {
     try {
       final hex = widget.group.coverColor.replaceAll('#', '');
       return Color(int.parse('FF$hex', radix: 16));
-    } catch (_) { return const Color(0xFF7B2FFE); }
+    } catch (_) { return AppColors.accent; }
   }
 
   @override
@@ -892,8 +896,8 @@ class _GroupTileState extends State<_GroupTile> {
                 borderRadius: BorderRadius.circular(12),
               ),
               alignment: Alignment.center,
-              child: Text(_categoryEmoji(widget.group.category),
-                style: const TextStyle(fontSize: 20)),
+              child: Icon(ZtIcons.groupType(widget.group.category),
+                size: 22, color: _color),
             ),
             const SizedBox(width: 12),
             Expanded(child: Column(
@@ -942,23 +946,23 @@ class _GroupTileState extends State<_GroupTile> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 6, vertical: 3),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF22C55E).withValues(alpha: 0.12),
+                      color: AppColors.green.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(6)),
                     child: Text('+${fmtP(bal)}',
                       style: const TextStyle(fontFamily: 'DMMono',
                           fontSize: 10, fontWeight: FontWeight.w700,
-                          color: Color(0xFF22C55E))));
+                          color: AppColors.green)));
                 } else if (bal < 0) {
                   return Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 6, vertical: 3),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEF4444).withValues(alpha: 0.10),
+                      color: AppColors.red.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(6)),
                     child: Text('−${fmtP(bal.abs())}',
                       style: const TextStyle(fontFamily: 'DMMono',
                           fontSize: 10, fontWeight: FontWeight.w700,
-                          color: Color(0xFFEF4444))));
+                          color: AppColors.red)));
                 }
                 return const SizedBox.shrink();
               }),
@@ -977,12 +981,12 @@ class _GroupTileState extends State<_GroupTile> {
                       : '${fmtP(widget.group.budgetAmount - _totalSpent)} left of ${fmtP(widget.group.budgetAmount)}',
                   style: TextStyle(fontFamily: 'DMSans', fontSize: 9.5,
                       color: budgetOver
-                          ? const Color(0xFFEF4444) : AppColors.text3)),
+                          ? AppColors.red : AppColors.text3)),
                 Text('${(budgetFrac * 100).toStringAsFixed(0)}%',
                   style: TextStyle(fontFamily: 'DMMono', fontSize: 9.5,
                       fontWeight: FontWeight.w600,
                       color: budgetOver
-                          ? const Color(0xFFEF4444) : _color)),
+                          ? AppColors.red : _color)),
               ],
             ),
             const SizedBox(height: 4),
@@ -991,7 +995,7 @@ class _GroupTileState extends State<_GroupTile> {
               child: LinearProgressIndicator(
                 value: budgetFrac, minHeight: 5,
                 backgroundColor: AppColors.bg4,
-                color: budgetOver ? const Color(0xFFEF4444) : _color,
+                color: budgetOver ? AppColors.red : _color,
               ),
             ),
           ],
@@ -1001,15 +1005,7 @@ class _GroupTileState extends State<_GroupTile> {
   }
 }
 
-String _categoryEmoji(String cat) {
-  switch (cat) {
-    case 'trip':    return '✈️';
-    case 'home':    return '🏠';
-    case 'couple':  return '💑';
-    case 'food':    return '🍕';
-    default:        return '👥';
-  }
-}
+// Group-type icons resolve through ZtIcons.groupType().
 
 // ════════════════════════════════════════════════════════════════
 //  FRIENDS TAB (individual splits)
@@ -1045,11 +1041,11 @@ class _FriendsTabState extends State<_FriendsTab> {
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: const Color(0xFF22C55E).withValues(alpha: 0.10),
+            color: AppColors.green.withValues(alpha: 0.10),
             shape: BoxShape.circle,
           ),
           child: const Icon(Icons.balance_outlined,
-              color: Color(0xFF22C55E), size: 36),
+              color: AppColors.green, size: 36),
         ),
         const SizedBox(height: 18),
         const Text('All settled up!', style: TextStyle(
@@ -1067,7 +1063,7 @@ class _FriendsTabState extends State<_FriendsTab> {
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                  colors: [Color(0xFF22C55E), Color(0xFF00C4A8)]),
+                  colors: [AppColors.green, Color(0xFF00C4A8)]),
               borderRadius: BorderRadius.circular(20),
             ),
             child: const Text('Add a Split',
@@ -1101,7 +1097,7 @@ class _FriendsTabState extends State<_FriendsTab> {
                   const SizedBox(height: 3),
                   Text(fmtP(widget.totalOwed), style: const TextStyle(
                     fontFamily: 'DMMono', fontSize: 17,
-                    fontWeight: FontWeight.w700, color: Color(0xFF22C55E))),
+                    fontWeight: FontWeight.w700, color: AppColors.green)),
                 ]),
                 if (widget.totalOwed > 0 && widget.totalOwe > 0)
                   Container(width: 1, height: 30, color: AppColors.border),
@@ -1112,7 +1108,7 @@ class _FriendsTabState extends State<_FriendsTab> {
                   const SizedBox(height: 3),
                   Text(fmtP(widget.totalOwe), style: const TextStyle(
                     fontFamily: 'DMMono', fontSize: 17,
-                    fontWeight: FontWeight.w700, color: Color(0xFFEF4444))),
+                    fontWeight: FontWeight.w700, color: AppColors.red)),
                 ]),
               ],
             ),
@@ -1123,7 +1119,7 @@ class _FriendsTabState extends State<_FriendsTab> {
           final friendName   = e.key;
           final theyOweYou   = e.value > 0;
           final color        = theyOweYou
-              ? const Color(0xFF22C55E) : const Color(0xFFEF4444);
+              ? AppColors.green : AppColors.red;
           final relatedSplits = widget.splits
               .where((s) => s.participantName.toLowerCase()
                   == friendName.toLowerCase())
@@ -1190,16 +1186,16 @@ class _FriendsTabState extends State<_FriendsTab> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 9, vertical: 4),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF22C55E).withValues(alpha: 0.12),
+                          color: AppColors.green.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                              color: const Color(0xFF22C55E)
+                              color: AppColors.green
                                   .withValues(alpha: 0.30)),
                         ),
                         child: const Text('Settle',
                           style: TextStyle(fontFamily: 'DMSans', fontSize: 10,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF22C55E))),
+                              color: AppColors.green)),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -1278,8 +1274,8 @@ class _FriendsTabState extends State<_FriendsTab> {
                                 ? Icons.arrow_upward_rounded
                                 : Icons.arrow_downward_rounded,
                             color: split.youOwe
-                                ? const Color(0xFFEF4444)
-                                : const Color(0xFF22C55E),
+                                ? AppColors.red
+                                : AppColors.green,
                             size: 14),
                           const SizedBox(width: 10),
                           Expanded(child: Column(
@@ -1300,8 +1296,8 @@ class _FriendsTabState extends State<_FriendsTab> {
                               fontFamily: 'DMMono', fontSize: 13,
                               fontWeight: FontWeight.w700,
                               color: split.youOwe
-                                  ? const Color(0xFFEF4444)
-                                  : const Color(0xFF22C55E))),
+                                  ? AppColors.red
+                                  : AppColors.green)),
                           const SizedBox(width: 8),
                           const Icon(Icons.swipe_left_rounded,
                               size: 12, color: AppColors.text3),
@@ -1507,7 +1503,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
     try {
       final hex = widget.group.coverColor.replaceAll('#', '');
       return Color(int.parse('FF$hex', radix: 16));
-    } catch (_) { return const Color(0xFF7B2FFE); }
+    } catch (_) { return AppColors.accent; }
   }
 
   @override
@@ -1545,8 +1541,8 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                     color: AppColors.text2, size: 22),
               ),
               const SizedBox(width: 14),
-              Text(_categoryEmoji(widget.group.category),
-                  style: const TextStyle(fontSize: 22)),
+              Icon(ZtIcons.groupType(widget.group.category),
+                  size: 22, color: AppColors.accent2),
               const SizedBox(width: 10),
               Expanded(child: Text(widget.group.name, style: const TextStyle(
                 fontFamily: 'DMSans', fontSize: 20,
@@ -1594,7 +1590,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                           : '${fmtP(spent)} of ${fmtP(budget)} · ${fmtP(budget - spent)} left',
                       style: TextStyle(fontFamily: 'DMMono', fontSize: 10,
                           color: over
-                              ? const Color(0xFFEF4444) : _groupColor)),
+                              ? AppColors.red : _groupColor)),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -1603,7 +1599,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                   child: LinearProgressIndicator(
                     value: frac, minHeight: 6,
                     backgroundColor: AppColors.bg4,
-                    color: over ? const Color(0xFFEF4444) : _groupColor,
+                    color: over ? AppColors.red : _groupColor,
                   ),
                 ),
               ]),
@@ -1934,16 +1930,16 @@ class _BalancesTab extends StatelessWidget {
                 fontSize: 12, color: AppColors.text3)),
           const SizedBox(height: 18),
           Row(children: [
-            _UpiAppButton('GPay', '🟢',
+            _UpiAppButton('GPay', const Color(0xFF2DA94F),
               () => launch('tez://upi/pay?am=$rupees&cu=INR&tn=$note')),
             const SizedBox(width: 10),
-            _UpiAppButton('PhonePe', '🟣',
+            _UpiAppButton('PhonePe', const Color(0xFF5F259F),
               () => launch('phonepe://pay?am=$rupees&cu=INR&tn=$note')),
             const SizedBox(width: 10),
-            _UpiAppButton('Paytm', '🔵',
+            _UpiAppButton('Paytm', const Color(0xFF00BAF2),
               () => launch('paytmmp://pay?am=$rupees&cu=INR&tn=$note')),
             const SizedBox(width: 10),
-            _UpiAppButton('Any UPI', '📲',
+            _UpiAppButton('Any UPI', AppColors.accent,
               () => launch('upi://pay?am=$rupees&cu=INR&tn=$note')),
           ]),
           const SizedBox(height: 14),
@@ -2010,9 +2006,9 @@ class _BalancesTab extends StatelessWidget {
             final isCurrentPaying = s.fromId == currentUid;
             final isCurrentReceiving = s.toId == currentUid;
             final color = isCurrentPaying
-                ? const Color(0xFFEF4444)
+                ? AppColors.red
                 : isCurrentReceiving
-                    ? const Color(0xFF22C55E)
+                    ? AppColors.green
                     : AppColors.text2;
 
             return Container(
@@ -2100,17 +2096,17 @@ class _BalancesTab extends StatelessWidget {
                         height: 36,
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF22C55E).withValues(alpha: 0.12),
+                          color: AppColors.green.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                              color: const Color(0xFF22C55E)
+                              color: AppColors.green
                                   .withValues(alpha: 0.30)),
                         ),
                         alignment: Alignment.center,
                         child: const Text('Mark paid',
                           style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF22C55E))),
+                              color: AppColors.green)),
                       ),
                     ),
                   ]),
@@ -2144,8 +2140,8 @@ class _BalancesTab extends StatelessWidget {
                 final owes    = bal < 0;
                 final settled = bal.abs() < 100;
                 final color = settled ? AppColors.text3
-                    : isOwed ? const Color(0xFF22C55E)
-                    : const Color(0xFFEF4444);
+                    : isOwed ? AppColors.green
+                    : AppColors.red;
                 return Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -2498,7 +2494,7 @@ class _MembersTabState extends State<_MembersTab> {
               // Badges
               Row(mainAxisSize: MainAxisSize.min, children: [
                 if (isGroupCreator)
-                  _badge('Creator', const Color(0xFF7B2FFE)),
+                  _badge('Creator', AppColors.accent),
                 if (isGroupCreator) const SizedBox(width: 4),
                 if (m.userId != null)
                   _badge('ZeroTab', AppColors.green),
@@ -2581,9 +2577,10 @@ class _MembersTabState extends State<_MembersTab> {
 
 // ── UPI app button ─────────────────────────────────────────────
 class _UpiAppButton extends StatelessWidget {
-  final String label, emoji;
+  final String label;
+  final Color dotColor;
   final VoidCallback onTap;
-  const _UpiAppButton(this.label, this.emoji, this.onTap);
+  const _UpiAppButton(this.label, this.dotColor, this.onTap);
   @override
   Widget build(BuildContext context) => Expanded(
     child: GestureDetector(
@@ -2595,7 +2592,8 @@ class _UpiAppButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppColors.border2)),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(emoji, style: const TextStyle(fontSize: 22)),
+          Container(width: 20, height: 20,
+            decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle)),
           const SizedBox(height: 5),
           Text(label, style: const TextStyle(fontFamily: 'DMSans',
               fontSize: 10, fontWeight: FontWeight.w600,
@@ -2955,21 +2953,21 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                 height: 36,
                 decoration: BoxDecoration(
                   color: _restaurantMode
-                      ? const Color(0xFFF59E0B).withValues(alpha: 0.15)
+                      ? AppColors.gold.withValues(alpha: 0.15)
                       : AppColors.bg3,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                       color: _restaurantMode
-                          ? const Color(0xFFF59E0B).withValues(alpha: 0.40)
+                          ? AppColors.gold.withValues(alpha: 0.40)
                           : AppColors.border)),
                 alignment: Alignment.center,
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Text('🍽️', style: TextStyle(fontSize: 13)),
+                  const Icon(Icons.receipt_long_outlined, size: 13, color: AppColors.text3),
                   const SizedBox(width: 4),
                   Text('Item Split', style: TextStyle(fontFamily: 'DMSans',
                       fontSize: 12, fontWeight: FontWeight.w600,
                       color: _restaurantMode
-                          ? const Color(0xFFF59E0B) : AppColors.text3)),
+                          ? AppColors.gold : AppColors.text3)),
                 ]),
               ),
             )),
@@ -3068,15 +3066,15 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                   color: AppColors.bg3,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                      color: const Color(0xFFF59E0B).withValues(alpha: 0.30))),
+                      color: AppColors.gold.withValues(alpha: 0.30))),
                 alignment: Alignment.center,
                 child: const Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.add_rounded,
-                      color: Color(0xFFF59E0B), size: 16),
+                      color: AppColors.gold, size: 16),
                   SizedBox(width: 5),
                   Text('Add Item', style: TextStyle(fontFamily: 'DMSans',
                       fontSize: 12, fontWeight: FontWeight.w600,
-                      color: Color(0xFFF59E0B))),
+                      color: AppColors.gold)),
                 ]),
               ),
             ),
@@ -3086,10 +3084,10 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF59E0B).withValues(alpha: 0.06),
+                  color: AppColors.gold.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                      color: const Color(0xFFF59E0B).withValues(alpha: 0.25))),
+                      color: AppColors.gold.withValues(alpha: 0.25))),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3101,7 +3099,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                     Text('Total: ${fmtP(_itemTotal)}',
                       style: const TextStyle(fontFamily: 'DMMono',
                           fontSize: 11, fontWeight: FontWeight.w700,
-                          color: Color(0xFFF59E0B))),
+                          color: AppColors.gold)),
                   ]),
                   const SizedBox(height: 6),
                   ..._computeItemShares().entries.map((e) {
@@ -3122,7 +3120,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                         Text(fmtP(e.value),
                           style: const TextStyle(fontFamily: 'DMMono',
                               fontSize: 12, fontWeight: FontWeight.w700,
-                              color: Color(0xFFF59E0B))),
+                              color: AppColors.gold)),
                       ]),
                     );
                   }),
@@ -3290,25 +3288,25 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
   final _memberCtrl  = TextEditingController();
   final _budgetCtrl  = TextEditingController();
   String _category   = 'general';
-  String _coverColor = '#22C55E';
+  String _coverColor = '#7B5FFF';
   List<String> _pendingMembers = [];
   bool _loading = false;
 
-  static const _categories = [
-    ('general', '👥', 'General'),
-    ('trip',    '✈️', 'Trip'),
-    ('home',    '🏠', 'Home'),
-    ('couple',  '💑', 'Couple'),
-    ('food',    '🍕', 'Food'),
+  static final _categories = <(String, IconData, String)>[
+    ('general', ZtIcons.groupType('general'), 'General'),
+    ('trip',    ZtIcons.groupType('trip'),    'Trip'),
+    ('home',    ZtIcons.groupType('home'),    'Home'),
+    ('couple',  ZtIcons.groupType('couple'),  'Couple'),
+    ('food',    ZtIcons.groupType('food'),    'Food'),
   ];
 
   static const _colors = [
-    ('#22C55E', Color(0xFF22C55E)),
-    ('#7B2FFE', Color(0xFF7B2FFE)),
-    ('#00CFDE', Color(0xFF00CFDE)),
-    ('#F59E0B', Color(0xFFF59E0B)),
-    ('#FF6B5B', Color(0xFFFF6B5B)),
-    ('#FF6B9D', Color(0xFFFF6B9D)),
+    ('#7B5FFF', AppColors.accent),
+    ('#1EBF7A', AppColors.green),
+    ('#00C4A8', AppColors.teal),
+    ('#E8A422', AppColors.gold),
+    ('#FF6B5B', AppColors.coral),
+    ('#FF6B9D', AppColors.pink),
   ];
 
   @override
@@ -3431,11 +3429,16 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
                             : AppColors.border),
                     ),
                     alignment: Alignment.center,
-                    child: Text('${c.$2} ${c.$3}',
-                      style: TextStyle(fontFamily: 'DMSans',
-                          fontSize: 11, fontWeight: FontWeight.w600,
-                          color: active ? AppColors.accent2
-                              : AppColors.text2)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(c.$2, size: 13,
+                          color: active ? AppColors.accent2 : AppColors.text2),
+                      const SizedBox(width: 5),
+                      Text(c.$3,
+                        style: TextStyle(fontFamily: 'DMSans',
+                            fontSize: 11, fontWeight: FontWeight.w600,
+                            color: active ? AppColors.accent2
+                                : AppColors.text2)),
+                    ]),
                   ),
                 ),
               );
@@ -3695,12 +3698,12 @@ class _AddSplitSheetState extends State<_AddSplitSheet> {
             Container(
               width: 34, height: 34,
               decoration: BoxDecoration(
-                color: const Color(0xFF22C55E).withValues(alpha: 0.12),
+                color: AppColors.green.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(9),
               ),
               alignment: Alignment.center,
               child: const Icon(Icons.balance_outlined,
-                  color: Color(0xFF22C55E), size: 18),
+                  color: AppColors.green, size: 18),
             ),
             const SizedBox(width: 12),
             const Text('Split with a Friend', style: TextStyle(
@@ -3736,12 +3739,12 @@ class _AddSplitSheetState extends State<_AddSplitSheet> {
                 height: 44,
                 decoration: BoxDecoration(
                   color: !_youOwe
-                      ? const Color(0xFF22C55E).withValues(alpha: 0.15)
+                      ? AppColors.green.withValues(alpha: 0.15)
                       : AppColors.bg3,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: !_youOwe
-                        ? const Color(0xFF22C55E).withValues(alpha: 0.50)
+                        ? AppColors.green.withValues(alpha: 0.50)
                         : AppColors.border),
                 ),
                 alignment: Alignment.center,
@@ -3749,7 +3752,7 @@ class _AddSplitSheetState extends State<_AddSplitSheet> {
                   style: TextStyle(fontFamily: 'DMSans', fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: !_youOwe
-                          ? const Color(0xFF22C55E) : AppColors.text3)),
+                          ? AppColors.green : AppColors.text3)),
               ),
             )),
             const SizedBox(width: 8),
@@ -3760,12 +3763,12 @@ class _AddSplitSheetState extends State<_AddSplitSheet> {
                 height: 44,
                 decoration: BoxDecoration(
                   color: _youOwe
-                      ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+                      ? AppColors.red.withValues(alpha: 0.15)
                       : AppColors.bg3,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: _youOwe
-                        ? const Color(0xFFEF4444).withValues(alpha: 0.50)
+                        ? AppColors.red.withValues(alpha: 0.50)
                         : AppColors.border),
                 ),
                 alignment: Alignment.center,
@@ -3773,7 +3776,7 @@ class _AddSplitSheetState extends State<_AddSplitSheet> {
                   style: TextStyle(fontFamily: 'DMSans', fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: _youOwe
-                          ? const Color(0xFFEF4444) : AppColors.text3)),
+                          ? AppColors.red : AppColors.text3)),
               ),
             )),
           ]),
@@ -3784,7 +3787,7 @@ class _AddSplitSheetState extends State<_AddSplitSheet> {
             child: ElevatedButton(
               onPressed: _loading ? null : _submit,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF22C55E),
+                backgroundColor: AppColors.green,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),

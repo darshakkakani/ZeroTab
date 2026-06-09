@@ -290,20 +290,20 @@ class _AiChatFab extends StatelessWidget {
           shape: BoxShape.circle,
           // Subtle gradient border ring
           border: Border.all(
-            color: const Color(0xFF7B2FFE),
+            color: AppColors.accent,
             width: 1.0,
           ),
           boxShadow: [
             // Outer violet glow
             const BoxShadow(
-              color: Color(0x4D7B2FFE), // violet 30%
+              color: Color(0x4D7B5FFF), // violet 30%
               blurRadius: 18,
               spreadRadius: 0,
               offset: Offset(0, 4),
             ),
             // Inner cyan halo
             const BoxShadow(
-              color: Color(0x3300CFDE), // cyan 20%
+              color: Color(0x3300C4A8), // cyan 20%
               blurRadius: 8,
               spreadRadius: 0,
               offset: Offset(0, 0),

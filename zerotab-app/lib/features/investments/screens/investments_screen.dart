@@ -19,8 +19,8 @@ extension _HoldingTypeX on _HoldingType {
     switch (this) {
       case _HoldingType.stock:     return AppColors.accent;
       case _HoldingType.mf:        return AppColors.teal;
-      case _HoldingType.etf:       return const Color(0xFF3B82F6);
-      case _HoldingType.commodity: return const Color(0xFFFFAA00);
+      case _HoldingType.etf:       return AppColors.dataETF;
+      case _HoldingType.commodity: return AppColors.gold;
     }
   }
   String get badge {
@@ -646,8 +646,8 @@ class _AllocationBar extends StatelessWidget {
           child: Row(children: [
             if (sf > 0) Flexible(flex: sf, child: Container(color: AppColors.accent)),
             if (mf > 0) Flexible(flex: mf, child: Container(color: AppColors.teal)),
-            if (ef > 0) Flexible(flex: ef, child: Container(color: const Color(0xFF3B82F6))),
-            if (cf > 0) Flexible(flex: cf, child: Container(color: const Color(0xFFFFAA00))),
+            if (ef > 0) Flexible(flex: ef, child: Container(color: AppColors.dataETF)),
+            if (cf > 0) Flexible(flex: cf, child: Container(color: AppColors.gold)),
           ]),
         ),
       ),
@@ -656,8 +656,8 @@ class _AllocationBar extends StatelessWidget {
       Row(children: [
         if (stocksValue > 0) _AllocDot('Stocks', AppColors.accent, stocksValue / totalValue),
         if (mfValue > 0) _AllocDot('MF', AppColors.teal, mfValue / totalValue),
-        if (etfValue > 0) _AllocDot('ETF', const Color(0xFF3B82F6), etfValue / totalValue),
-        if (commValue > 0) _AllocDot('Commod', const Color(0xFFFFAA00), commValue / totalValue),
+        if (etfValue > 0) _AllocDot('ETF', AppColors.dataETF, etfValue / totalValue),
+        if (commValue > 0) _AllocDot('Commod', AppColors.gold, commValue / totalValue),
       ]),
     ]);
   }
@@ -799,7 +799,7 @@ class _AllTabContent extends StatelessWidget {
                           _SectionCard(
                             title:    'ETF',
                             icon:     Icons.analytics_outlined,
-                            color:    const Color(0xFF3B82F6),
+                            color:    AppColors.dataETF,
                             holdings: etfs,
                             tabIndex: 3,
                             onTap:    () => onSwitchTab(3),
@@ -812,7 +812,7 @@ class _AllTabContent extends StatelessWidget {
                           _SectionCard(
                             title:    'COMMODITY',
                             icon:     Icons.diamond_outlined,
-                            color:    const Color(0xFFFFAA00),
+                            color:    AppColors.gold,
                             holdings: commodities,
                             tabIndex: 4,
                             onTap:    () => onSwitchTab(4),
@@ -855,8 +855,8 @@ class _PortfolioBarChart extends StatelessWidget {
 
     const stocks_c = AppColors.accent;
     const mf_c     = AppColors.teal;
-    const etf_c    = Color(0xFF3B82F6);
-    const comm_c   = Color(0xFFFFAA00);
+    const etf_c    = AppColors.dataETF;
+    const comm_c   = AppColors.gold;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
@@ -1524,13 +1524,13 @@ class _USStubCard extends StatelessWidget {
           colors: [Color(0xFF0E1F3A), Color(0xFF070E1C)],
         ),
         borderRadius: BorderRadius.circular(AppRadius.xl),
-        border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.25)),
+        border: Border.all(color: AppColors.dataETF.withOpacity(0.25)),
       ),
       child: Row(children: [
         Container(
           width: 44, height: 44,
           decoration: BoxDecoration(
-            color: const Color(0x1A3B82F6),
+            color: const Color(0x1A4F9DF7),
             borderRadius: BorderRadius.circular(AppRadius.md),
           ),
           alignment: Alignment.center,
@@ -1548,13 +1548,13 @@ class _USStubCard extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: const Color(0x1A3B82F6),
+            color: const Color(0x1A4F9DF7),
             borderRadius: BorderRadius.circular(AppRadius.pill),
-            border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.3)),
+            border: Border.all(color: AppColors.dataETF.withOpacity(0.3)),
           ),
           child: const Text('Coming Soon', style: TextStyle(
             fontFamily: 'DMSans', fontSize: 10, fontWeight: FontWeight.w600,
-            color: Color(0xFF3B82F6))),
+            color: AppColors.dataETF)),
         ),
       ]),
     ),
@@ -1590,12 +1590,12 @@ class _USStubSheet extends StatelessWidget {
       Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0x0F3B82F6),
+          color: const Color(0x0F4F9DF7),
           borderRadius: BorderRadius.circular(AppRadius.md),
-          border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.2)),
+          border: Border.all(color: AppColors.dataETF.withOpacity(0.2)),
         ),
         child: Row(children: [
-          const Icon(Icons.star_rounded, color: Color(0xFF3B82F6), size: 16),
+          const Icon(Icons.star_rounded, color: AppColors.dataETF, size: 16),
           const SizedBox(width: 8),
           const Expanded(child: Text('Apple · Tesla · Amazon · Google · Microsoft',
             style: TextStyle(fontFamily: 'DMSans', fontSize: 12, color: AppColors.text2))),
@@ -1990,12 +1990,12 @@ class _AddETFSheetState extends State<_AddETFSheet> {
           duration: const Duration(milliseconds: 120),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: _symbolCtrl.text == s ? const Color(0x333B82F6) : AppColors.bg3,
+            color: _symbolCtrl.text == s ? const Color(0x334F9DF7) : AppColors.bg3,
             borderRadius: BorderRadius.circular(AppRadius.sm),
-            border: Border.all(color: _symbolCtrl.text == s ? const Color(0xFF3B82F6).withOpacity(0.5) : AppColors.border),
+            border: Border.all(color: _symbolCtrl.text == s ? AppColors.dataETF.withOpacity(0.5) : AppColors.border),
           ),
           child: Text(s, style: TextStyle(fontFamily: 'DMMono', fontSize: 10, fontWeight: FontWeight.w600,
-            color: _symbolCtrl.text == s ? const Color(0xFF3B82F6) : AppColors.text3)),
+            color: _symbolCtrl.text == s ? AppColors.dataETF : AppColors.text3)),
         ),
       )).toList()),
       const SizedBox(height: 14),
@@ -2005,11 +2005,11 @@ class _AddETFSheetState extends State<_AddETFSheet> {
         Padding(padding: const EdgeInsets.only(top: 22), child: ElevatedButton(
           onPressed: _fetchingPrice ? null : _fetchPrice,
           style: ElevatedButton.styleFrom(backgroundColor: AppColors.bg3,
-            foregroundColor: const Color(0xFF3B82F6), minimumSize: const Size(80, 44), elevation: 0,
+            foregroundColor: AppColors.dataETF, minimumSize: const Size(80, 44), elevation: 0,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md),
               side: const BorderSide(color: AppColors.border))),
           child: _fetchingPrice
-            ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF3B82F6)))
+            ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.dataETF))
             : const Text('Get NAV', style: TextStyle(fontFamily: 'DMSans', fontSize: 12)),
         )),
       ]),
@@ -2017,12 +2017,12 @@ class _AddETFSheetState extends State<_AddETFSheet> {
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(color: const Color(0x183B82F6), borderRadius: BorderRadius.circular(AppRadius.sm)),
+          decoration: BoxDecoration(color: const Color(0x184F9DF7), borderRadius: BorderRadius.circular(AppRadius.sm)),
           child: Row(children: [
-            const Icon(Icons.check_circle_outline_rounded, size: 13, color: Color(0xFF3B82F6)),
+            const Icon(Icons.check_circle_outline_rounded, size: 13, color: AppColors.dataETF),
             const SizedBox(width: 6),
             Text('Live NAV: ${formatInr(_livePrice!)}', style: const TextStyle(
-              fontFamily: 'DMMono', fontSize: 12, color: Color(0xFF3B82F6))),
+              fontFamily: 'DMMono', fontSize: 12, color: AppColors.dataETF)),
           ]),
         ),
       ],
@@ -2035,7 +2035,7 @@ class _AddETFSheetState extends State<_AddETFSheet> {
       const SizedBox(height: 24),
       SizedBox(width: double.infinity, height: 48, child: ElevatedButton(
         onPressed: _loading ? null : _submit,
-        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3B82F6),
+        style: ElevatedButton.styleFrom(backgroundColor: AppColors.dataETF,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md))),
         child: _loading
           ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))

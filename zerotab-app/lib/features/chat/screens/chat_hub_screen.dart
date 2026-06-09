@@ -44,15 +44,15 @@ final chatSessionsProvider = FutureProvider.autoDispose<List<ChatSession>>((ref)
 // ── Expert-level prompt categories ──────────────────────────────
 
 class _PromptCategory {
-  final String emoji;
+  final IconData icon;
   final String label;
   final List<String> prompts;
-  const _PromptCategory({required this.emoji, required this.label, required this.prompts});
+  const _PromptCategory({required this.icon, required this.label, required this.prompts});
 }
 
 const _promptCategories = [
   _PromptCategory(
-    emoji: '🧠',
+    icon: Icons.auto_awesome_outlined,
     label: 'AI Wealth Scan',
     prompts: [
       'Run a full financial health diagnostic on my accounts',
@@ -61,7 +61,7 @@ const _promptCategories = [
     ],
   ),
   _PromptCategory(
-    emoji: '💰',
+    icon: Icons.savings_outlined,
     label: 'Tax & Savings',
     prompts: [
       'Show me exactly how much tax I can save this year — old vs new regime',
@@ -70,7 +70,7 @@ const _promptCategories = [
     ],
   ),
   _PromptCategory(
-    emoji: '📊',
+    icon: Icons.insights_outlined,
     label: 'Investment IQ',
     prompts: [
       'Audit my portfolio — is my asset allocation right for my age and risk?',
@@ -79,7 +79,7 @@ const _promptCategories = [
     ],
   ),
   _PromptCategory(
-    emoji: '🏦',
+    icon: Icons.account_balance_outlined,
     label: 'Debt Strategy',
     prompts: [
       'Build me a fastest-payoff plan for all my loans and credit cards',
@@ -88,7 +88,7 @@ const _promptCategories = [
     ],
   ),
   _PromptCategory(
-    emoji: '🎯',
+    icon: Icons.flag_outlined,
     label: 'Goal Planning',
     prompts: [
       'I want to retire by 45 — build me a realistic roadmap with my current numbers',
@@ -284,9 +284,9 @@ class _HubHeader extends StatelessWidget {
                 begin: Alignment.topLeft, end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(AppRadius.sm),
-              border: Border.all(color: const Color(0xFF7B2FFE), width: 1),
+              border: Border.all(color: AppColors.accent, width: 1),
               boxShadow: const [
-                BoxShadow(color: Color(0x337B2FFE), blurRadius: 8),
+                BoxShadow(color: Color(0x337B5FFF), blurRadius: 8),
               ],
             ),
             alignment: Alignment.center,
@@ -302,7 +302,7 @@ class _HubHeader extends StatelessWidget {
                         fontWeight: FontWeight.w600, color: AppColors.text)),
                 Text('Your personal CFO',
                     style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
-                        color: Color(0xFF00CFDE))),
+                        color: AppColors.teal)),
               ],
             ),
           ),
@@ -336,11 +336,11 @@ class _HeroSection extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0x147B2FFE), Color(0x0A00CFDE)],
+          colors: [Color(0x147B5FFF), Color(0x0A00C4A8)],
           begin: Alignment.topLeft, end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0x287B2FFE)),
+        border: Border.all(color: const Color(0x287B5FFF)),
       ),
       child: Column(
         children: [
@@ -369,11 +369,11 @@ class _HeroSection extends StatelessWidget {
             spacing: 8, runSpacing: 6,
             alignment: WrapAlignment.center,
             children: const [
-              _CapPill(text: 'Tax Strategy', icon: '📋'),
-              _CapPill(text: 'Portfolio Audit', icon: '📊'),
-              _CapPill(text: 'Debt Payoff Plans', icon: '🏦'),
-              _CapPill(text: 'Wealth Roadmaps', icon: '🎯'),
-              _CapPill(text: 'Spending Insights', icon: '💡'),
+              _CapPill(text: 'Tax Strategy', icon: Icons.description_outlined),
+              _CapPill(text: 'Portfolio Audit', icon: Icons.insights_outlined),
+              _CapPill(text: 'Debt Payoff Plans', icon: Icons.account_balance_outlined),
+              _CapPill(text: 'Wealth Roadmaps', icon: Icons.flag_outlined),
+              _CapPill(text: 'Spending Insights', icon: Icons.lightbulb_outline),
             ],
           ),
         ],
@@ -452,8 +452,8 @@ class _PulsePainter extends CustomPainter {
     required this.ring3, required this.dotPulse,
   });
 
-  static const _violet = Color(0xFF7B2FFE);
-  static const _cyan   = Color(0xFF00CFDE);
+  static const _violet = AppColors.accent;
+  static const _cyan   = AppColors.teal;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -506,7 +506,7 @@ class _PulsePainter extends CustomPainter {
 
 class _CapPill extends StatelessWidget {
   final String text;
-  final String icon;
+  final IconData icon;
   const _CapPill({required this.text, required this.icon});
 
   @override
@@ -521,8 +521,8 @@ class _CapPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(icon, style: const TextStyle(fontSize: 11)),
-          const SizedBox(width: 4),
+          Icon(icon, size: 13, color: AppColors.teal),
+          const SizedBox(width: 5),
           Text(text, style: const TextStyle(
             fontFamily: 'DMSans', fontSize: 11,
             fontWeight: FontWeight.w500, color: AppColors.text2,
@@ -548,13 +548,13 @@ class _NewChatButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFF7B2FFE), Color(0xFF00CFDE)],
+            colors: [AppColors.accent, AppColors.teal],
             begin: Alignment.centerLeft, end: Alignment.centerRight,
           ),
           borderRadius: BorderRadius.circular(14),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x407B2FFE),
+              color: Color(0x407B5FFF),
               blurRadius: 16, offset: Offset(0, 4),
             ),
           ],
@@ -609,7 +609,7 @@ class _PromptCategoryCardState extends State<_PromptCategoryCard> {
                 padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                 child: Row(
                   children: [
-                    Text(widget.category.emoji, style: const TextStyle(fontSize: 18)),
+                    Icon(widget.category.icon, size: 18, color: AppColors.teal),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(widget.category.label,

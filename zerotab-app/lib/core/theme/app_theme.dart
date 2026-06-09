@@ -48,6 +48,19 @@ class AppColors {
   static const coral    = Color(0xFFFF6B5B);
   static const coralSoft = Color(0x14FF6B5B);
 
+  // ── Data-viz / asset-class series ──
+  // A deliberate, harmonious categorical palette defined ONCE. Charts and
+  // asset-class UI read these so no screen ever invents its own series
+  // colours (this is what kills the foreign blue #3B82F6 / orange #FFAA00).
+  static const dataStocks    = accent;            // violet
+  static const dataMF        = teal;              // teal
+  static const dataETF       = Color(0xFF4F9DF7); // calm periwinkle-blue (in-palette)
+  static const dataCommodity = gold;              // gold
+  static const dataOther     = Color(0xFF8C88A8); // muted lavender-grey
+  static const dataPalette   = <Color>[
+    dataStocks, dataMF, dataETF, dataCommodity, coral, dataOther,
+  ];
+
   // ── Net-worth card gradient ──
   static const nwGrad1  = Color(0xFF130F2E);
   static const nwGrad2  = Color(0xFF0C0A1E);
@@ -341,13 +354,34 @@ extension AppTextStyles on BuildContext {
   TextStyle get captionStyle  => Theme.of(this).textTheme.bodySmall!;
   TextStyle get labelStyle    => Theme.of(this).textTheme.labelMedium!;
 
-  // DM Mono for currency values, XIRR, codes — tight tracking
-  TextStyle monoStyle({double fontSize = 13, Color color = AppColors.text}) =>
+  // DM Mono for IDs, tickers, XIRR, codes — tabular+lining so digits never shift
+  TextStyle monoStyle({
+    double fontSize = 13,
+    Color color = AppColors.text,
+    FontWeight weight = FontWeight.w500,
+  }) =>
     GoogleFonts.dmMono(
       fontSize: fontSize,
       color: color,
       letterSpacing: 0.2,
-      fontWeight: FontWeight.w500,
+      fontWeight: weight,
+      fontFeatures: const [FontFeature.tabularFigures(), FontFeature.liningFigures()],
+    );
+
+  // Money — DM Sans with tabular + lining figures. EVERY rupee amount routes
+  // through this so columns align and numbers never jitter as they animate.
+  TextStyle money({
+    double fontSize = 15,
+    Color color = AppColors.text,
+    FontWeight weight = FontWeight.w600,
+    double letterSpacing = -0.3,
+  }) =>
+    GoogleFonts.dmSans(
+      fontSize: fontSize,
+      color: color,
+      fontWeight: weight,
+      letterSpacing: letterSpacing,
+      fontFeatures: const [FontFeature.tabularFigures(), FontFeature.liningFigures()],
     );
 }
 
@@ -383,6 +417,41 @@ class AppDecorations {
       ),
       borderRadius: BorderRadius.circular(radius),
       border: Border.all(color: Color(0x3300C4A8), width: 1),
+    );
+
+  /// Net-worth hero gradient (home hero card)
+  static BoxDecoration heroCard({double radius = AppRadius.xxl}) =>
+    BoxDecoration(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        stops: [0.0, 0.5, 1.0],
+        colors: [Color(0xFF130F2E), Color(0xFF0F0D21), Color(0xFF0C0A1E)],
+      ),
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: const Color(0x2E7B5FFF)),
+    );
+
+  /// Settle-up "you're owed" — derived from green
+  static BoxDecoration owedCard({double radius = AppRadius.xxl}) =>
+    BoxDecoration(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft, end: Alignment.bottomRight,
+        colors: [Color(0xFF0C1F16), Color(0xFF08100C)],
+      ),
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: const Color(0x3D1EBF7A)),
+    );
+
+  /// Settle-up "you owe" — derived from red
+  static BoxDecoration oweCard({double radius = AppRadius.xxl}) =>
+    BoxDecoration(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft, end: Alignment.bottomRight,
+        colors: [Color(0xFF21100E), Color(0xFF130807)],
+      ),
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: const Color(0x3DE04A3F)),
     );
 
   /// Icon container — colored soft bg

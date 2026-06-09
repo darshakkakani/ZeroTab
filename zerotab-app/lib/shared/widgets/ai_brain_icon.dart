@@ -1,9 +1,10 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../../core/theme/app_theme.dart';
 
 // ── ZeroTab AI Identity Colors ─────────────────────────────────
-const _kViolet = Color(0xFF7B2FFE); // electric violet
-const _kCyan   = Color(0xFF00CFDE); // intelligence cyan
+const _kViolet = AppColors.accent; // electric violet
+const _kCyan   = AppColors.teal; // intelligence cyan
 const _kWhite  = Color(0xFFFFFFFF);
 
 /// The "Intelligence Orb" — ZeroTab's AI identity mark.

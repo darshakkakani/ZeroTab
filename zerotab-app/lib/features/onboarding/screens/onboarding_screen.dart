@@ -402,8 +402,8 @@ class _NetworkPainter extends CustomPainter {
     final cy = size.height * 0.46;
 
     const purple = Color(0xFF7B5FFF);
-    const teal   = Color(0xFF00C896);
-    const gold   = Color(0xFFFFAA00);
+    const teal   = AppColors.teal;
+    const gold   = AppColors.gold;
     const blue   = Color(0xFF3B8BFF);
     const violet = Color(0xFF9B7FFF);
 
@@ -835,7 +835,7 @@ class _ShieldPainter3D extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2;
     final cy = size.height * 0.46;
-    const teal    = Color(0xFF00C896);
+    const teal    = AppColors.teal;
     const tealDim = Color(0xFF009970);
 
     // ── 1. Deep ambient halo (far background glow) ────────
@@ -1152,7 +1152,7 @@ class _AIChipPainter extends CustomPainter {
     const blue   = Color(0xFF3B8BFF);
     const purple = Color(0xFF7B5FFF);
     const cyan   = Color(0xFF00D4FF);
-    const teal   = Color(0xFF00C896);
+    const teal   = AppColors.teal;
 
     // ── 1. Wide ambient deep glow ──────────────────────────
     canvas.drawCircle(
@@ -1329,7 +1329,7 @@ class _AIChipPainter extends CustomPainter {
             Color(0xFF7B5FFF),
             Color(0xFF3B8BFF),
             Color(0xFF00D4FF),
-            Color(0xFF00C896),
+            AppColors.teal,
             Color(0xFF7B5FFF),
           ],
           stops: const [0.0, 0.25, 0.5, 0.75, 1.0],

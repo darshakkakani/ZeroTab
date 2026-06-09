@@ -28,11 +28,11 @@ Color catColor(String cat) {
     'utilities':     AppColors.accent2,
     'transport':     AppColors.teal,
     'entertainment': Color(0xFFFF6B9D),
-    'health':        Color(0xFF22C55E),
-    'investment':    Color(0xFF22C55E),
-    'subscriptions': Color(0xFF7B2FFE),
+    'health':        AppColors.green,
+    'investment':    AppColors.green,
+    'subscriptions': AppColors.accent,
     'insurance':     AppColors.gold,
-    'income':        Color(0xFF22C55E),
+    'income':        AppColors.green,
     'others':        AppColors.text3,
   };
   return map[cat] ?? AppColors.text3;
@@ -158,9 +158,9 @@ class BudgetBrainCard extends StatelessWidget {
 
     // Color: green until 80%, amber 80-100%, red above 100%
     final Color accent;
-    if (spendFrac < 0.80)      accent = const Color(0xFF22C55E);
-    else if (spendFrac < 1.0)  accent = const Color(0xFFF59E0B);
-    else                       accent = const Color(0xFFEF4444);
+    if (spendFrac < 0.80)      accent = AppColors.green;
+    else if (spendFrac < 1.0)  accent = AppColors.gold;
+    else                       accent = AppColors.red;
 
     // Days remaining until money runs out at current pace
     final daysLeft = burnRate > 0 ? (freeLeft / burnRate).floor() : 99;
@@ -204,11 +204,11 @@ class BudgetBrainCard extends StatelessWidget {
 
         // ── Row 2: 3 stat chips ─────────────────────────────────
         Row(children: [
-          _MiniStat('Income', formatInr(income, compact: true), const Color(0xFF22C55E)),
+          _MiniStat('Income', formatInr(income, compact: true), AppColors.green),
           const SizedBox(width: 6),
-          _MiniStat('Fixed', formatInr(fixedCommit, compact: true), const Color(0xFFF59E0B)),
+          _MiniStat('Fixed', formatInr(fixedCommit, compact: true), AppColors.gold),
           const SizedBox(width: 6),
-          _MiniStat('Spent', formatInr(spent, compact: true), const Color(0xFFEF4444)),
+          _MiniStat('Spent', formatInr(spent, compact: true), AppColors.red),
         ]),
 
         const SizedBox(height: 10),
@@ -301,16 +301,16 @@ class _NoIncomeCard extends StatelessWidget {
     decoration: BoxDecoration(
       color: AppColors.bg2,
       borderRadius: BorderRadius.circular(AppRadius.xl),
-      border: Border.all(color: const Color(0xFF7B2FFE).withValues(alpha: 0.25)),
+      border: Border.all(color: AppColors.accent.withValues(alpha: 0.25)),
     ),
     child: Row(children: [
       Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: const Color(0xFF7B2FFE).withValues(alpha: 0.10),
+          color: AppColors.accent.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: const Icon(Icons.psychology_outlined, color: Color(0xFF7B2FFE), size: 22),
+        child: const Icon(Icons.psychology_outlined, color: AppColors.accent, size: 22),
       ),
       const SizedBox(width: 12),
       const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -328,13 +328,13 @@ class _NoIncomeCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: BoxDecoration(
-            color: const Color(0xFF7B2FFE).withValues(alpha: 0.12),
+            color: AppColors.accent.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(8),
           ),
           child: importing
             ? const SizedBox(width: 14, height: 14,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF7B2FFE)))
-            : const Icon(Icons.upload_file_rounded, size: 16, color: Color(0xFF7B2FFE)),
+                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent))
+            : const Icon(Icons.upload_file_rounded, size: 16, color: AppColors.accent),
         ),
       ),
     ]),
@@ -540,7 +540,7 @@ class _EnvelopeBudgetsState extends State<EnvelopeBudgets> {
                 width: double.infinity, height: 46,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [Color(0xFF7B2FFE), Color(0xFF00CFDE)]),
+                    colors: [AppColors.accent, AppColors.teal]),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 alignment: Alignment.center,
@@ -583,7 +583,7 @@ class _EnvelopeBudgetsState extends State<EnvelopeBudgets> {
       rtaColor = AppColors.green;
       rtaLabel = '✓ Every rupee has a job';
     } else if (rta > 0) {
-      rtaColor = const Color(0xFF7B2FFE);
+      rtaColor = AppColors.accent;
       rtaLabel = '${formatInr(rta, compact: true)} unassigned — assign it!';
     } else {
       rtaColor = AppColors.red;
@@ -633,7 +633,7 @@ class _EnvelopeBudgetsState extends State<EnvelopeBudgets> {
             _RtaStat('Income', formatInr(income, compact: true), AppColors.green),
             const SizedBox(width: 8),
             _RtaStat('Budgeted', formatInr(totalBudgeted, compact: true),
-                const Color(0xFF7B2FFE)),
+                AppColors.accent),
           ]),
           if (income > 0) const SizedBox(height: 12),
           // Age of Money
@@ -717,10 +717,10 @@ class _EnvelopeBudgetsState extends State<EnvelopeBudgets> {
                       Text(catEmoji(e.key), style: TextStyle(
                           fontFamily: 'DMSans', fontSize: 11,
                           fontWeight: FontWeight.w500,
-                          color: over ? const Color(0xFFEF4444) : AppColors.text2)),
+                          color: over ? AppColors.red : AppColors.text2)),
                       Text('$pct%', style: TextStyle(
                           fontFamily: 'DMMono', fontSize: 9.5,
-                          color: over ? const Color(0xFFEF4444) : AppColors.text3)),
+                          color: over ? AppColors.red : AppColors.text3)),
                     ],
                   )),
                   Expanded(child: Column(
@@ -731,7 +731,7 @@ class _EnvelopeBudgetsState extends State<EnvelopeBudgets> {
                         child: LinearProgressIndicator(
                           value: frac, minHeight: 7,
                           backgroundColor: AppColors.bg4,
-                          color: over ? const Color(0xFFEF4444) : color,
+                          color: over ? AppColors.red : color,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -741,7 +741,7 @@ class _EnvelopeBudgetsState extends State<EnvelopeBudgets> {
                           Text(formatInr(s, compact: true),
                             style: TextStyle(fontFamily: 'DMMono', fontSize: 10,
                                 color: over
-                                    ? const Color(0xFFEF4444)
+                                    ? AppColors.red
                                     : AppColors.text2)),
                           Text('of ${formatInr(budget, compact: true)}',
                             style: const TextStyle(fontFamily: 'DMMono',
@@ -755,7 +755,7 @@ class _EnvelopeBudgetsState extends State<EnvelopeBudgets> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
-                      color: (over ? const Color(0xFFEF4444) : color)
+                      color: (over ? AppColors.red : color)
                           .withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(6),
                     ),
@@ -765,7 +765,7 @@ class _EnvelopeBudgetsState extends State<EnvelopeBudgets> {
                       style: TextStyle(fontFamily: 'DMMono', fontSize: 8.5,
                           fontWeight: FontWeight.w700,
                           color: over
-                              ? const Color(0xFFEF4444) : color)),
+                              ? AppColors.red : color)),
                   ),
                 ]),
               ),
@@ -1004,12 +1004,12 @@ class _SettleUpLedgerState extends State<SettleUpLedger> {
                 Container(
                   width: 34, height: 34,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF22C55E).withValues(alpha: 0.12),
+                    color: AppColors.green.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(9),
                   ),
                   alignment: Alignment.center,
                   child: const Icon(Icons.balance_outlined,
-                      color: Color(0xFF22C55E), size: 18),
+                      color: AppColors.green, size: 18),
                 ),
                 const SizedBox(width: 12),
                 const Text('Split an Expense',
@@ -1042,12 +1042,12 @@ class _SettleUpLedgerState extends State<SettleUpLedger> {
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
                       color: !youOwe
-                          ? const Color(0xFF22C55E).withValues(alpha: 0.15)
+                          ? AppColors.green.withValues(alpha: 0.15)
                           : AppColors.bg3,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                           color: !youOwe
-                              ? const Color(0xFF22C55E).withValues(alpha: 0.50)
+                              ? AppColors.green.withValues(alpha: 0.50)
                               : AppColors.border),
                     ),
                     alignment: Alignment.center,
@@ -1055,7 +1055,7 @@ class _SettleUpLedgerState extends State<SettleUpLedger> {
                       style: TextStyle(fontFamily: 'DMSans', fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: !youOwe
-                              ? const Color(0xFF22C55E) : AppColors.text3)),
+                              ? AppColors.green : AppColors.text3)),
                   ),
                 )),
                 const SizedBox(width: 8),
@@ -1066,12 +1066,12 @@ class _SettleUpLedgerState extends State<SettleUpLedger> {
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
                       color: youOwe
-                          ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+                          ? AppColors.red.withValues(alpha: 0.15)
                           : AppColors.bg3,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                           color: youOwe
-                              ? const Color(0xFFEF4444).withValues(alpha: 0.50)
+                              ? AppColors.red.withValues(alpha: 0.50)
                               : AppColors.border),
                     ),
                     alignment: Alignment.center,
@@ -1079,7 +1079,7 @@ class _SettleUpLedgerState extends State<SettleUpLedger> {
                       style: TextStyle(fontFamily: 'DMSans', fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: youOwe
-                              ? const Color(0xFFEF4444) : AppColors.text3)),
+                              ? AppColors.red : AppColors.text3)),
                   ),
                 )),
               ]),
@@ -1098,7 +1098,7 @@ class _SettleUpLedgerState extends State<SettleUpLedger> {
                   width: double.infinity, height: 48,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                        colors: [Color(0xFF22C55E), Color(0xFF00C4A8)]),
+                        colors: [AppColors.green, Color(0xFF00C4A8)]),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   alignment: Alignment.center,
@@ -1150,7 +1150,7 @@ class _SettleUpLedgerState extends State<SettleUpLedger> {
           padding: EdgeInsets.all(24),
           child: SizedBox(width: 20, height: 20,
               child: CircularProgressIndicator(strokeWidth: 2,
-                  color: Color(0xFF22C55E))),
+                  color: AppColors.green)),
         ),
       );
     }
@@ -1169,7 +1169,7 @@ class _SettleUpLedgerState extends State<SettleUpLedger> {
           child: Row(children: [
             Container(width: 6, height: 6,
               decoration: const BoxDecoration(
-                  color: Color(0xFF22C55E), shape: BoxShape.circle)),
+                  color: AppColors.green, shape: BoxShape.circle)),
             const SizedBox(width: 8),
             const Text('SETTLEUP',
               style: TextStyle(fontFamily: 'DMSans', fontSize: 10,
@@ -1179,22 +1179,22 @@ class _SettleUpLedgerState extends State<SettleUpLedger> {
             if (_saving)
               const SizedBox(width: 14, height: 14,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Color(0xFF22C55E)))
+                      strokeWidth: 2, color: AppColors.green))
             else
               GestureDetector(
                 onTap: _showAddSheet,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF22C55E).withValues(alpha: 0.12),
+                    color: AppColors.green.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                        color: const Color(0xFF22C55E).withValues(alpha: 0.30)),
+                        color: AppColors.green.withValues(alpha: 0.30)),
                   ),
                   child: const Text('+ Split',
                     style: TextStyle(fontFamily: 'DMSans', fontSize: 10,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF22C55E))),
+                        color: AppColors.green)),
                 ),
               ),
           ]),
@@ -1209,11 +1209,11 @@ class _SettleUpLedgerState extends State<SettleUpLedger> {
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF22C55E).withValues(alpha: 0.08),
+                  color: AppColors.green.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Icon(Icons.balance_outlined,
-                    color: Color(0xFF22C55E), size: 28),
+                    color: AppColors.green, size: 28),
               ),
               const SizedBox(height: 12),
               const Text('No open splits',
@@ -1232,7 +1232,7 @@ class _SettleUpLedgerState extends State<SettleUpLedger> {
           ...balances.entries.map((e) {
             final theyOweYou = e.value > 0;
             final color = theyOweYou
-                ? const Color(0xFF22C55E) : const Color(0xFFEF4444);
+                ? AppColors.green : AppColors.red;
             final relatedEntries = _entries
                 .where((en) =>
                     en.friendName.toLowerCase() == e.key.toLowerCase())
@@ -1317,14 +1317,14 @@ class _SettleUpLedgerState extends State<SettleUpLedger> {
                 if (toReceive > 0) Text(
                   'To receive: ${formatInr(toReceive, compact: true)}',
                   style: const TextStyle(fontFamily: 'DMMono', fontSize: 10,
-                      color: Color(0xFF22C55E))),
+                      color: AppColors.green)),
                 if (toReceive > 0 && toPay > 0)
                   const Text('  ·  ',
                       style: TextStyle(color: AppColors.text3, fontSize: 10)),
                 if (toPay > 0) Text(
                   'To pay: ${formatInr(toPay, compact: true)}',
                   style: const TextStyle(fontFamily: 'DMMono', fontSize: 10,
-                      color: Color(0xFFEF4444))),
+                      color: AppColors.red)),
               ]);
             }),
           ),
@@ -1416,7 +1416,7 @@ class BillRadar extends StatelessWidget {
           border: Border.all(color: AppColors.border2)),
         child: Column(children: [
           const Icon(Icons.wifi_tethering_rounded,
-              color: Color(0xFF00CFDE), size: 28),
+              color: AppColors.teal, size: 28),
           const SizedBox(height: 10),
           const Text('No recurring drains detected',
             style: TextStyle(fontFamily: 'DMSans', fontSize: 13,
@@ -1441,9 +1441,9 @@ class BillRadar extends StatelessWidget {
       Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFFEF4444).withValues(alpha: 0.07),
+          color: AppColors.red.withValues(alpha: 0.07),
           borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.20)),
+          border: Border.all(color: AppColors.red.withValues(alpha: 0.20)),
         ),
         child: Row(children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1453,7 +1453,7 @@ class BillRadar extends StatelessWidget {
             const SizedBox(height: 4),
             Text(formatInr(annual, compact: true), style: const TextStyle(
               fontFamily: 'DMMono', fontSize: 26, fontWeight: FontWeight.w800,
-              color: Color(0xFFEF4444), letterSpacing: -0.8)),
+              color: AppColors.red, letterSpacing: -0.8)),
             Text('leaving automatically · ${subs.length} recurring',
               style: const TextStyle(fontFamily: 'DMSans', fontSize: 10,
                   color: AppColors.text3)),
@@ -1466,11 +1466,11 @@ class BillRadar extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                color: AppColors.gold.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8)),
               child: Text(_annualCompare(annual),
                 style: const TextStyle(fontFamily: 'DMSans', fontSize: 9.5,
-                    fontWeight: FontWeight.w600, color: Color(0xFFF59E0B))),
+                    fontWeight: FontWeight.w600, color: AppColors.gold)),
             ),
           ]),
         ]),
@@ -1482,20 +1482,20 @@ class BillRadar extends StatelessWidget {
         Container(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
           decoration: BoxDecoration(
-            color: const Color(0xFFF59E0B).withValues(alpha: 0.08),
+            color: AppColors.gold.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(AppRadius.md),
             border: Border.all(
-                color: const Color(0xFFF59E0B).withValues(alpha: 0.25))),
+                color: AppColors.gold.withValues(alpha: 0.25))),
           child: Row(children: [
             const Icon(Icons.notifications_active_outlined,
-                color: Color(0xFFF59E0B), size: 16),
+                color: AppColors.gold, size: 16),
             const SizedBox(width: 8),
             Expanded(child: Text(
               'Renewing in 7 days: ' +
                   renewingSoon.map((s) =>
                       '${s.name} (${s.nextRenewal.difference(now).inDays}d)').join(', '),
               style: const TextStyle(fontFamily: 'DMSans', fontSize: 11,
-                  color: Color(0xFFF59E0B), height: 1.3))),
+                  color: AppColors.gold, height: 1.3))),
           ]),
         ),
       ],
@@ -1538,10 +1538,10 @@ class BillRadar extends StatelessWidget {
                     width: 8, height: 8,
                     decoration: BoxDecoration(
                       color: cancelPriority == 'review'
-                          ? const Color(0xFFEF4444)
+                          ? AppColors.red
                           : cancelPriority == 'check'
-                              ? const Color(0xFFF59E0B)
-                              : const Color(0xFF22C55E),
+                              ? AppColors.gold
+                              : AppColors.green,
                       shape: BoxShape.circle)),
                   const SizedBox(width: 10),
                   Expanded(child: Column(
@@ -1557,7 +1557,7 @@ class BillRadar extends StatelessWidget {
                               : 'Last: ${sub.lastDate.difference(now).inDays.abs()}d ago',
                           style: TextStyle(fontFamily: 'DMSans', fontSize: 10,
                               color: daysLeft <= 3
-                                  ? const Color(0xFFEF4444) : AppColors.text3)),
+                                  ? AppColors.red : AppColors.text3)),
                         const Text(' · ', style: TextStyle(
                             color: AppColors.text3, fontSize: 10)),
                         Text(catEmoji(sub.category),
@@ -1574,23 +1574,23 @@ class BillRadar extends StatelessWidget {
                           horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: (cancelPriority == 'review'
-                            ? const Color(0xFFEF4444)
+                            ? AppColors.red
                             : cancelPriority == 'check'
-                                ? const Color(0xFFF59E0B)
-                                : const Color(0xFF22C55E))
+                                ? AppColors.gold
+                                : AppColors.green)
                             .withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(6)),
                       child: Text(
-                        cancelPriority == 'review' ? '🔴 Review'
-                            : cancelPriority == 'check' ? '🟡 Check'
-                            : '✅ Active',
+                        cancelPriority == 'review' ? 'Review'
+                            : cancelPriority == 'check' ? 'Check'
+                            : 'Active',
                         style: TextStyle(fontFamily: 'DMSans', fontSize: 9,
                             fontWeight: FontWeight.w600,
                             color: cancelPriority == 'review'
-                                ? const Color(0xFFEF4444)
+                                ? AppColors.red
                                 : cancelPriority == 'check'
-                                    ? const Color(0xFFF59E0B)
-                                    : const Color(0xFF22C55E))),
+                                    ? AppColors.gold
+                                    : AppColors.green)),
                     ),
                   ]),
                 ]),
@@ -1667,7 +1667,7 @@ class MoneyHabitsStrip extends StatelessWidget {
             child: Row(children: [
               Container(width: 6, height: 6,
                 decoration: const BoxDecoration(
-                    color: Color(0xFFF59E0B), shape: BoxShape.circle)),
+                    color: AppColors.gold, shape: BoxShape.circle)),
               const SizedBox(width: 8),
               const Text('PATTERNS',
                 style: TextStyle(fontFamily: 'DMSans', fontSize: 10,

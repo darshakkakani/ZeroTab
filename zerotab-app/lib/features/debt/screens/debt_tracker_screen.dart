@@ -372,11 +372,11 @@ class _DebtTrackerScreenState extends ConsumerState<DebtTrackerScreen> {
                                 Container(width: 1, margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2), color: AppColors.border),
                                 Expanded(child: _StatPill('EMI / Income',
                                   emiRatio > 0 ? formatPct(emiRatio * 100) : '—',
-                                  valueColor: emiRatio > 0.5 ? AppColors.red : emiRatio > 0.3 ? const Color(0xFFFF8C42) : AppColors.green)),
+                                  valueColor: emiRatio > 0.5 ? AppColors.red : emiRatio > 0.3 ? AppColors.gold : AppColors.green)),
                                 Container(width: 1, margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2), color: AppColors.border),
                                 Expanded(child: _StatPill('Avg Rate',
                                   avgRate > 0 ? '${avgRate.toStringAsFixed(1)}%' : '—',
-                                  valueColor: avgRate > 15 ? AppColors.red : avgRate > 10 ? const Color(0xFFFF8C42) : AppColors.text2)),
+                                  valueColor: avgRate > 15 ? AppColors.red : avgRate > 10 ? AppColors.gold : AppColors.text2)),
                               ]),
                             ),
 
@@ -393,7 +393,7 @@ class _DebtTrackerScreenState extends ConsumerState<DebtTrackerScreen> {
                                     style: TextStyle(
                                       fontFamily: 'DMMono', fontSize: 12, fontWeight: FontWeight.w600,
                                       color: creditUtil > 0.7 ? AppColors.red
-                                          : creditUtil > 0.4 ? const Color(0xFFFF8C42)
+                                          : creditUtil > 0.4 ? AppColors.gold
                                           : AppColors.green,
                                     ),
                                   ),
@@ -407,7 +407,7 @@ class _DebtTrackerScreenState extends ConsumerState<DebtTrackerScreen> {
                                   minHeight: 5,
                                   backgroundColor: AppColors.bg4,
                                   color: creditUtil > 0.7 ? AppColors.red
-                                      : creditUtil > 0.4 ? const Color(0xFFFF8C42)
+                                      : creditUtil > 0.4 ? AppColors.gold
                                       : AppColors.green,
                                 ),
                               ),
@@ -650,7 +650,7 @@ class _CardsSectionCard extends StatelessWidget {
     final outstanding = _totalOutstanding;
     final util = totalLimit > 0 ? (outstanding / totalLimit).clamp(0.0, 1.0) : 0.0;
     final utilColor = util > 0.75 ? AppColors.red
-        : util > 0.40 ? const Color(0xFFFF8C42)
+        : util > 0.40 ? AppColors.gold
         : AppColors.green;
 
     return Column(
@@ -1805,7 +1805,7 @@ class _CreditCardDetailCard extends StatelessWidget {
     final isPastDue   = dueDate != null && dueDate.isBefore(DateTime.now());
 
     final utilColor = util > 0.75 ? AppColors.red
-        : util > 0.40 ? const Color(0xFFFF8C42)
+        : util > 0.40 ? AppColors.gold
         : AppColors.green;
 
     final minDue = outstanding * minDuePct / 100;
@@ -1939,7 +1939,7 @@ class _CreditCardDetailCard extends StatelessWidget {
                   color: isPastDue ? AppColors.red
                       : dueDate != null &&
                               dueDate.difference(DateTime.now()).inDays <= 3
-                          ? const Color(0xFFFF8C42)
+                          ? AppColors.gold
                           : AppColors.text2,
                 ),
                 _vDivider(),

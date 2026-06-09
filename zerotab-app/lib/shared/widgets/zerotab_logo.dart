@@ -1,9 +1,10 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../../core/theme/app_theme.dart';
 
 // ── ZeroTab Brand Colors ────────────────────────────────────────
-const kZtViolet     = Color(0xFF7B2FFE);
-const kZtCyan       = Color(0xFF00CFDE);
+const kZtViolet     = AppColors.accent;
+const kZtCyan       = AppColors.teal;
 const kZtDeepBg     = Color(0xFF0E0820);
 const kZtVoidBlack  = Color(0xFF060C1A);
 

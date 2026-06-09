@@ -27,9 +27,9 @@ import '../../../shared/models/models.dart';
 import '../../../shared/services/providers.dart';
 
 // ── Brand palette ─────────────────────────────────────────────
-const _kViolet  = Color(0xFF7B2FFE);
-const _kCyan    = Color(0xFF00CFDE);
-const _kGreen   = Color(0xFF22C55E);
+const _kViolet  = AppColors.accent;
+const _kCyan    = AppColors.teal;
+const _kGreen   = AppColors.green;
 const _kDarkBg  = Color(0xFF060C1A);
 const _kCard    = Color(0xFF0E0E1A);
 const _kBorder  = Color(0xFF1C1C2E);
@@ -662,7 +662,7 @@ class _LoanSelector extends StatelessWidget {
                 const SizedBox(height: 3),
                 Row(children: [
                   _MetaChip(formatInr(outstanding, compact: true),
-                      const Color(0xFFEF4444)),
+                      AppColors.red),
                   const SizedBox(width: 8),
                   _MetaChip('$rate% p.a.', AppColors.text3),
                 ]),
@@ -891,7 +891,7 @@ class _AnalyseButton extends StatelessWidget {
         color: enabled ? null : _kBorder,
         borderRadius: BorderRadius.circular(14),
         boxShadow: enabled
-            ? [const BoxShadow(color: Color(0x407B2FFE),
+            ? [const BoxShadow(color: Color(0x407B5FFF),
                 blurRadius: 20, offset: Offset(0, 6))]
             : null,
       ),
