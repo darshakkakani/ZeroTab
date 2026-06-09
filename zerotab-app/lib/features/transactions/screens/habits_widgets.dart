@@ -24,13 +24,13 @@ Color catColor(String cat) {
     'grocery':       AppColors.green,
     'shopping':      AppColors.accent,
     'emi':           AppColors.gold,
-    'fuel':          AppColors.amber,
+    'fuel':          AppColors.gold,
     'utilities':     AppColors.accent2,
     'transport':     AppColors.teal,
-    'entertainment': Color(0xFFFF6B9D),
-    'health':        AppColors.green,
-    'investment':    AppColors.green,
-    'subscriptions': AppColors.accent,
+    'entertainment': AppColors.coral,
+    'health':        AppColors.teal,
+    'investment':    AppColors.teal,
+    'subscriptions': AppColors.dataETF,
     'insurance':     AppColors.gold,
     'income':        AppColors.green,
     'others':        AppColors.text3,
@@ -168,33 +168,54 @@ class BudgetBrainCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [accent.withValues(alpha: 0.10), const Color(0xFF0C0A1E)],
+        gradient: const LinearGradient(
+          colors: [Color(0xFF130F2E), Color(0xFF0F0D21), Color(0xFF0C0A1E)],
+          stops: [0.0, 0.5, 1.0],
           begin: Alignment.topLeft, end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(AppRadius.xl),
-        border: Border.all(color: accent.withValues(alpha: 0.28)),
+        border: Border.all(
+          color: accent == AppColors.green
+              ? const Color(0x2E7B5FFF)
+              : accent.withValues(alpha: 0.40),
+          width: accent == AppColors.green ? 1.0 : 1.5,
+        ),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
 
         // ── Row 1: Free money + Import ──────────────────────────
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('FREELY SPENDABLE',
-              style: TextStyle(fontFamily: 'DMSans', fontSize: 9.5,
-                  fontWeight: FontWeight.w600, letterSpacing: 0.5,
-                  color: accent.withValues(alpha: 0.80))),
+            Row(children: [
+              const Text('FREELY SPENDABLE',
+                style: TextStyle(fontFamily: 'DMSans', fontSize: 9.5,
+                    fontWeight: FontWeight.w600, letterSpacing: 0.5,
+                    color: AppColors.text3)),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  accent == AppColors.green ? 'On track'
+                      : accent == AppColors.gold ? 'Pace up'
+                      : 'Over budget',
+                  style: TextStyle(fontFamily: 'DMSans', fontSize: 8.5,
+                      fontWeight: FontWeight.w700, color: accent),
+                ),
+              ),
+            ]),
             const SizedBox(height: 3),
             Text(formatInr(freeLeft, compact: true),
-              style: TextStyle(fontFamily: 'DMMono', fontSize: 26,
+              style: TextStyle(fontFamily: 'DMMono', fontSize: 28,
                   fontWeight: FontWeight.w800, color: accent, letterSpacing: -1.0)),
             const SizedBox(height: 2),
             Text(
-              onTrack
-                ? 'On track · ${formatInr(burnRate, compact: true)}/day · ${daysLeft}d left'
-                : 'Over pace · projected overspend ${formatInr((projected - budget).abs(), compact: true)}',
-              style: TextStyle(fontFamily: 'DMSans', fontSize: 10,
-                  color: accent.withValues(alpha: 0.80))),
+              '${formatInr(burnRate, compact: true)}/day · $daysLeft days left',
+              style: const TextStyle(fontFamily: 'DMSans', fontSize: 10,
+                  color: AppColors.text3)),
           ])),
           const SizedBox(width: 10),
           _ImportBtn(onImport: onImport, importing: importing),
@@ -256,17 +277,19 @@ class BudgetBrainCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.border),
             ),
             child: Row(children: [
-              Icon(Icons.savings_outlined, size: 13,
-                  color: accent.withValues(alpha: 0.70)),
+              const Icon(Icons.savings_outlined, size: 13,
+                  color: AppColors.text3),
               const SizedBox(width: 5),
-              Text('Net saved: ', style: TextStyle(fontFamily: 'DMSans',
-                  fontSize: 9.5, color: accent.withValues(alpha: 0.70))),
+              const Text('Net saved: ', style: TextStyle(fontFamily: 'DMSans',
+                  fontSize: 9.5, color: AppColors.text3)),
               Text(formatInr((income - fixedCommit - spent).clamp(-double.infinity, double.infinity),
                     compact: true),
                 style: TextStyle(fontFamily: 'DMMono', fontSize: 11,
-                    fontWeight: FontWeight.w700, color: accent)),
+                    fontWeight: FontWeight.w700,
+                    color: (income - fixedCommit - spent) >= 0 ? AppColors.green : AppColors.red)),
             ]),
           )),
           const SizedBox(width: 8),
@@ -275,13 +298,14 @@ class BudgetBrainCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.border),
             ),
             child: Row(children: [
-              Icon(Icons.receipt_long_outlined, size: 13,
-                  color: accent.withValues(alpha: 0.70)),
+              const Icon(Icons.receipt_long_outlined, size: 13,
+                  color: AppColors.text3),
               const SizedBox(width: 5),
-              Text('${txns.length} txns', style: TextStyle(fontFamily: 'DMMono',
-                  fontSize: 11, fontWeight: FontWeight.w700, color: accent)),
+              Text('${txns.length} txns', style: const TextStyle(fontFamily: 'DMMono',
+                  fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.text2)),
             ]),
           ),
         ]),

@@ -467,12 +467,12 @@ class _NetWorthCardState extends State<_NetWorthCard>
               return Text(
                 display,
                 style: TextStyle(
-                  fontFamily: 'DMSans',
-                  fontSize: 34,
+                  fontFamily: 'DMMono',
+                  fontSize: 38,
                   fontWeight: FontWeight.w700,
-                  letterSpacing: -1.0,
+                  letterSpacing: -1.5,
                   color: isNeg ? AppColors.red : AppColors.text,
-                  height: 1.1,
+                  height: 1.0,
                   fontFeatures: const [FontFeature.tabularFigures(), FontFeature.liningFigures()],
                 ),
               );
@@ -545,15 +545,15 @@ class _MiniAllocationBar extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ClipRRect(
-          borderRadius: BorderRadius.circular(3),
+          borderRadius: BorderRadius.circular(5),
           child: Row(children: [
-            if (bf  > 0) Expanded(flex: (bf  * 1000).round(), child: Container(height: 5, color: AppColors.accent)),
-            if (inf > 0) Expanded(flex: (inf * 1000).round(), child: Container(height: 5, color: AppColors.teal)),
-            if (cf  > 0) Expanded(flex: (cf  * 1000).round(), child: Container(height: 5, color: AppColors.coral)),
-            if (lf  > 0) Expanded(flex: (lf  * 1000).round(), child: Container(height: 5, color: _kOrange)),
+            if (bf  > 0) Expanded(flex: (bf  * 1000).round(), child: Container(height: 8, color: AppColors.accent)),
+            if (inf > 0) Expanded(flex: (inf * 1000).round(), child: Container(height: 8, color: AppColors.teal)),
+            if (cf  > 0) Expanded(flex: (cf  * 1000).round(), child: Container(height: 8, color: AppColors.coral)),
+            if (lf  > 0) Expanded(flex: (lf  * 1000).round(), child: Container(height: 8, color: _kOrange)),
           ]),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 7),
         Row(children: [
           _AllocDot(color: AppColors.accent, label: 'Banks',  pct: bf),
           const SizedBox(width: 12),
@@ -580,13 +580,13 @@ class _AllocDot extends StatelessWidget {
     mainAxisSize: MainAxisSize.min,
     children: [
       Container(
-          width: 6, height: 6,
+          width: 8, height: 8,
           decoration: BoxDecoration(shape: BoxShape.circle, color: color)),
-      const SizedBox(width: 4),
+      const SizedBox(width: 5),
       Text(
         '$label ${(pct * 100).toStringAsFixed(0)}%',
         style: const TextStyle(
-            fontFamily: 'DMSans', fontSize: 9, color: AppColors.text3),
+            fontFamily: 'DMSans', fontSize: 10, color: AppColors.text3),
       ),
     ],
   );
@@ -977,10 +977,11 @@ class _AccountChipItem extends StatelessWidget {
       Text(
         item.value,
         style: TextStyle(
-          fontFamily: 'DMSans',
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
+          fontFamily: 'DMMono',
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
           color: item.negative ? AppColors.red : AppColors.text,
+          fontFeatures: const [FontFeature.tabularFigures(), FontFeature.liningFigures()],
         ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -1585,10 +1586,11 @@ class _MonthlyPlanCard extends StatelessWidget {
             const SizedBox(height: 2),
             Text(formatInr(spent, compact: true),
                 style: const TextStyle(
-                  fontFamily: 'DMSans',
-                  fontSize: 18,
+                  fontFamily: 'DMMono',
+                  fontSize: 20,
                   fontWeight: FontWeight.w700,
                   color: AppColors.text,
+                  fontFeatures: const [FontFeature.tabularFigures(), FontFeature.liningFigures()],
                 )),
           ]),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -1600,10 +1602,11 @@ class _MonthlyPlanCard extends StatelessWidget {
             const SizedBox(height: 2),
             Text(formatInr(income, compact: true),
                 style: const TextStyle(
-                  fontFamily: 'DMSans',
-                  fontSize: 18,
+                  fontFamily: 'DMMono',
+                  fontSize: 20,
                   fontWeight: FontWeight.w700,
                   color: AppColors.text2,
+                  fontFeatures: const [FontFeature.tabularFigures(), FontFeature.liningFigures()],
                 )),
           ]),
         ]),
@@ -1619,7 +1622,7 @@ class _MonthlyPlanCard extends StatelessWidget {
                   ? AppColors.red
                   : pct > 0.8
                       ? _kOrange
-                      : AppColors.teal,
+                      : AppColors.accent,
             ),
           ),
           Positioned(

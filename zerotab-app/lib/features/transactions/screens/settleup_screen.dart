@@ -622,7 +622,7 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                 controller: _tab,
                 onTap: (_) => setState(() {}),
                 indicator: BoxDecoration(
-                  color: AppColors.green,
+                  color: AppColors.accent,
                   borderRadius: BorderRadius.circular(17),
                 ),
                 indicatorSize: TabBarIndicatorSize.tab,
@@ -647,7 +647,7 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator(
-                    strokeWidth: 2, color: AppColors.green))
+                    strokeWidth: 2, color: AppColors.accent))
                 : TabBarView(
                     controller: _tab,
                     children: [
@@ -903,9 +903,9 @@ class _GroupTileState extends State<_GroupTile> {
             Expanded(child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(widget.group.name, style: TextStyle(
+                Text(widget.group.name, style: const TextStyle(
                   fontFamily: 'DMSans', fontSize: 14,
-                  fontWeight: FontWeight.w700, color: _color)),
+                  fontWeight: FontWeight.w700, color: AppColors.text)),
                 const SizedBox(height: 2),
                 Row(children: [
                   Icon(Icons.people_outline_rounded,
@@ -918,15 +918,15 @@ class _GroupTileState extends State<_GroupTile> {
                     const Text(' · ', style: TextStyle(
                         color: AppColors.text3, fontSize: 10.5)),
                     Text(fmtP(_totalSpent) + ' spent',
-                      style: TextStyle(fontFamily: 'DMMono', fontSize: 10.5,
-                          color: _color.withValues(alpha: 0.75))),
+                      style: const TextStyle(fontFamily: 'DMMono', fontSize: 10.5,
+                          color: AppColors.text3)),
                   ],
                 ]),
               ],
             )),
             // ── User balance chip ──────────────────────────────
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Icon(Icons.chevron_right_rounded, color: _color, size: 18),
+              Icon(Icons.chevron_right_rounded, color: AppColors.text3, size: 18),
               const SizedBox(height: 4),
               Builder(builder: (_) {
                 final bal = widget.userBalance;
@@ -1517,11 +1517,11 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
           child: Container(
             width: 50, height: 50,
             decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [
-                _groupColor, _groupColor.withValues(alpha: 0.70)]),
+              gradient: const LinearGradient(colors: [
+                AppColors.accent, AppColors.accent2]),
               shape: BoxShape.circle,
               boxShadow: [BoxShadow(
-                color: _groupColor.withValues(alpha: 0.35),
+                color: AppColors.accent.withValues(alpha: 0.35),
                 blurRadius: 16, offset: const Offset(0, 5))],
             ),
             alignment: Alignment.center,
@@ -1621,9 +1621,9 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
               ),
               child: TabBar(
                 controller: _tab,
-                indicator: BoxDecoration(
-                  color: _groupColor,
-                  borderRadius: BorderRadius.circular(17),
+                indicator: const BoxDecoration(
+                  color: AppColors.accent,
+                  borderRadius: BorderRadius.all(Radius.circular(17)),
                 ),
                 indicatorSize: TabBarIndicatorSize.tab,
                 dividerColor: Colors.transparent,
@@ -1647,8 +1647,8 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
 
           Expanded(
             child: _loading
-                ? Center(child: CircularProgressIndicator(
-                    strokeWidth: 2, color: _groupColor))
+                ? const Center(child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppColors.accent))
                 : TabBarView(
                     controller: _tab,
                     children: [
