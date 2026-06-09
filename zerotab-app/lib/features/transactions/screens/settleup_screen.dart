@@ -237,7 +237,8 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 2, vsync: this);
+    _tab = TabController(length: 3, vsync: this);
+    _tab.addListener(() { if (mounted) setState(() {}); });
     _loadAll();
     _subscribeRealtime();
   }
@@ -470,7 +471,7 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                       color: AppColors.text3)),
               ]),
               const Spacer(),
-              GestureDetector(
+              if (_tab.index < 2) GestureDetector(
                 onTap: _tab.index == 0 ? _showCreateGroup : _showAddSplit,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -636,6 +637,7 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                 tabs: [
                   Tab(text: 'Groups (${_groups.length})'),
                   const Tab(text: 'Friends'),
+                  const Tab(text: 'Activity'),
                 ],
               ),
             ),
@@ -666,6 +668,10 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
                         onSettle: _settleAll,
                         onDelete: _deleteSplit,
                         onAddSplit: _showAddSplit,
+                        currentUid: _uid,
+                      ),
+                      _MainActivityTab(
+                        groups: _groups,
                         currentUid: _uid,
                       ),
                     ],
@@ -882,9 +888,9 @@ class _GroupTileState extends State<_GroupTile> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: _color.withValues(alpha: 0.07),
+          color: AppColors.bg2,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _color.withValues(alpha: 0.20)),
+          border: Border.all(color: AppColors.border),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
@@ -892,12 +898,12 @@ class _GroupTileState extends State<_GroupTile> {
             Container(
               width: 44, height: 44,
               decoration: BoxDecoration(
-                color: _color.withValues(alpha: 0.15),
+                color: AppColors.accent.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(12),
               ),
               alignment: Alignment.center,
               child: Icon(ZtIcons.groupType(widget.group.category),
-                size: 22, color: _color),
+                size: 22, color: AppColors.accent),
             ),
             const SizedBox(width: 12),
             Expanded(child: Column(
@@ -1339,7 +1345,6 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
   late final TabController _tab;
   List<SettleExpense>          _expenses   = [];
   List<GroupMember>            _members    = [];
-  List<Map<String, dynamic>>   _activities = [];
   bool _loading = true;
   RealtimeChannel? _channel;
 
@@ -1359,20 +1364,21 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
   }
 
   Future<void> _loadAll() async {
-    await Future.wait([_loadExpenses(), _loadMembers(), _loadActivities()]);
+    await Future.wait([_loadExpenses(), _loadMembers()]);
     if (mounted) setState(() => _loading = false);
   }
 
-  Future<void> _loadActivities() async {
-    try {
-      final rows = await _db
-          .from('settle_activities')
-          .select('*, profiles(name)')
-          .eq('group_id', widget.group.id)
-          .order('created_at', ascending: false)
-          .limit(40);
-      _activities = List<Map<String, dynamic>>.from(rows as List);
-    } catch (_) {}
+  // Derive activity from loaded expenses so Activity tab is never empty
+  List<Map<String, dynamic>> get _derivedActivities {
+    final sorted = List<SettleExpense>.from(_expenses)
+      ..sort((a, b) => b.expenseDate.compareTo(a.expenseDate));
+    return sorted.map((e) => <String, dynamic>{
+      'action': e.isSettlement ? 'settled' : 'added_expense',
+      'user_id': e.paidBy,
+      'profiles': null,
+      'metadata': <String, dynamic>{'title': e.title, 'amount': e.amount},
+      'created_at': e.expenseDate.toIso8601String(),
+    }).toList();
   }
 
   Future<void> _loadExpenses() async {
@@ -1553,12 +1559,12 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                 padding: const EdgeInsets.symmetric(
                     horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _groupColor.withValues(alpha: 0.12),
+                  color: AppColors.accent.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text('${_members.length} members',
-                  style: TextStyle(fontFamily: 'DMSans', fontSize: 10.5,
-                      fontWeight: FontWeight.w600, color: _groupColor)),
+                  style: const TextStyle(fontFamily: 'DMSans', fontSize: 10.5,
+                      fontWeight: FontWeight.w600, color: AppColors.accent)),
               ),
             ]),
           ),
@@ -1674,10 +1680,10 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                               .then((_) { if (mounted) setState(() {}); }),
                           onDeleted: _deleteMember),
                       _ActivitiesTab(
-                          activities: _activities,
+                          activities: _derivedActivities,
                           members: _members,
                           groupColor: _groupColor,
-                          onRefresh: () => _loadActivities()
+                          onRefresh: () => _loadExpenses()
                               .then((_) { if (mounted) setState(() {}); })),
                     ],
                   ),
@@ -1760,7 +1766,7 @@ class _ExpensesTab extends StatelessWidget {
   Widget build(BuildContext context) {
     if (expenses.isEmpty) {
       return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.receipt_long_outlined, color: groupColor, size: 36),
+        const Icon(Icons.receipt_long_outlined, color: AppColors.text3, size: 36),
         const SizedBox(height: 12),
         const Text('No expenses yet',
           style: TextStyle(fontFamily: 'DMSans', fontSize: 15,
@@ -1819,20 +1825,15 @@ class _ExpensesTab extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: e.isSettlement
-                  ? AppColors.bg3
-                  : groupColor.withValues(alpha: 0.06),
+              color: AppColors.bg2,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: e.isSettlement
-                    ? AppColors.border
-                    : groupColor.withValues(alpha: 0.18)),
+              border: Border.all(color: AppColors.border),
             ),
             child: Row(children: [
               Container(
                 width: 40, height: 40,
                 decoration: BoxDecoration(
-                  color: (e.isSettlement ? AppColors.green : groupColor)
+                  color: (e.isSettlement ? AppColors.green : AppColors.accent)
                       .withValues(alpha: 0.13),
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -1841,7 +1842,7 @@ class _ExpensesTab extends StatelessWidget {
                   e.isSettlement
                       ? Icons.check_circle_outline_rounded
                       : Icons.receipt_outlined,
-                  color: e.isSettlement ? AppColors.green : groupColor,
+                  color: e.isSettlement ? AppColors.green : AppColors.accent,
                   size: 18),
               ),
               const SizedBox(width: 12),
@@ -1862,11 +1863,11 @@ class _ExpensesTab extends StatelessWidget {
                 Text(fmtP(e.amount), style: TextStyle(
                   fontFamily: 'DMMono', fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: e.isSettlement ? AppColors.green : groupColor)),
+                  color: e.isSettlement ? AppColors.green : AppColors.text)),
                 if (paidByMe && !e.isSettlement)
-                  Text('you paid', style: TextStyle(
+                  const Text('you paid', style: TextStyle(
                     fontFamily: 'DMSans', fontSize: 9.5,
-                    color: groupColor.withValues(alpha: 0.70))),
+                    color: AppColors.text3)),
               ]),
             ]),
           ),
@@ -2015,36 +2016,36 @@ class _BalancesTab extends StatelessWidget {
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.06),
+                color: AppColors.bg2,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: color.withValues(alpha: 0.20)),
+                border: Border.all(color: AppColors.border),
               ),
               child: Column(children: [
                 Row(children: [
                   // Payer avatar
                   Container(width: 32, height: 32,
                     decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.15),
+                      color: AppColors.accent.withValues(alpha: 0.15),
                       shape: BoxShape.circle),
                     alignment: Alignment.center,
                     child: Text(
                       (s.fromId == currentUid ? 'You' : s.fromName)[0].toUpperCase(),
-                      style: TextStyle(fontFamily: 'DMSans', fontSize: 14,
-                          fontWeight: FontWeight.w700, color: color)),
+                      style: const TextStyle(fontFamily: 'DMSans', fontSize: 14,
+                          fontWeight: FontWeight.w700, color: AppColors.accent)),
                   ),
                   const SizedBox(width: 8),
-                  Icon(Icons.arrow_forward_rounded, size: 14, color: color),
+                  const Icon(Icons.arrow_forward_rounded, size: 14, color: AppColors.text3),
                   const SizedBox(width: 8),
                   // Receiver avatar
                   Container(width: 32, height: 32,
                     decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.15),
+                      color: AppColors.accent.withValues(alpha: 0.15),
                       shape: BoxShape.circle),
                     alignment: Alignment.center,
                     child: Text(
                       (s.toId == currentUid ? 'You' : s.toName)[0].toUpperCase(),
-                      style: TextStyle(fontFamily: 'DMSans', fontSize: 14,
-                          fontWeight: FontWeight.w700, color: color)),
+                      style: const TextStyle(fontFamily: 'DMSans', fontSize: 14,
+                          fontWeight: FontWeight.w700, color: AppColors.accent)),
                   ),
                   const SizedBox(width: 10),
                   Expanded(child: Column(
@@ -2070,8 +2071,8 @@ class _BalancesTab extends StatelessWidget {
                       child: Container(
                         height: 36,
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(colors: [
-                            groupColor, groupColor.withValues(alpha: 0.70)]),
+                          gradient: const LinearGradient(colors: [
+                            AppColors.accent, AppColors.accent2]),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         alignment: Alignment.center,
@@ -2096,17 +2097,17 @@ class _BalancesTab extends StatelessWidget {
                         height: 36,
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
-                          color: AppColors.green.withValues(alpha: 0.12),
+                          color: AppColors.accent.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                              color: AppColors.green
+                              color: AppColors.accent
                                   .withValues(alpha: 0.30)),
                         ),
                         alignment: Alignment.center,
                         child: const Text('Mark paid',
                           style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: AppColors.green)),
+                              color: AppColors.accent)),
                       ),
                     ),
                   ]),
@@ -2148,12 +2149,12 @@ class _BalancesTab extends StatelessWidget {
                     child: Row(children: [
                       Container(width: 36, height: 36,
                         decoration: BoxDecoration(
-                          color: groupColor.withValues(alpha: 0.15),
+                          color: AppColors.accent.withValues(alpha: 0.15),
                           shape: BoxShape.circle),
                         alignment: Alignment.center,
-                        child: Text(m.initials, style: TextStyle(
+                        child: Text(m.initials, style: const TextStyle(
                           fontFamily: 'DMSans', fontSize: 14,
-                          fontWeight: FontWeight.w700, color: groupColor)),
+                          fontWeight: FontWeight.w700, color: AppColors.accent)),
                       ),
                       const SizedBox(width: 10),
                       Expanded(child: Column(
@@ -2249,7 +2250,7 @@ class _MembersTabState extends State<_MembersTab> {
               child: Container(
                 width: double.infinity, height: 46,
                 decoration: BoxDecoration(
-                  color: widget.groupColor,
+                  color: AppColors.accent,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 alignment: Alignment.center,
@@ -2459,23 +2460,22 @@ class _MembersTabState extends State<_MembersTab> {
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             decoration: BoxDecoration(
-              color: widget.groupColor.withValues(alpha: 0.06),
+              color: AppColors.bg2,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: widget.groupColor.withValues(alpha: 0.18)),
+              border: Border.all(color: AppColors.border),
             ),
             child: Row(children: [
               // Avatar
               Container(
                 width: 38, height: 38,
                 decoration: BoxDecoration(
-                  color: widget.groupColor.withValues(alpha: 0.15),
+                  color: AppColors.accent.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
-                child: Text(m.initials, style: TextStyle(
+                child: Text(m.initials, style: const TextStyle(
                   fontFamily: 'DMSans', fontSize: 15,
-                  fontWeight: FontWeight.w700, color: widget.groupColor)),
+                  fontWeight: FontWeight.w700, color: AppColors.accent)),
               ),
               const SizedBox(width: 12),
               Expanded(child: Column(
@@ -2540,14 +2540,14 @@ class _MembersTabState extends State<_MembersTab> {
                   decoration: BoxDecoration(
                     color: _adding
                         ? AppColors.bg3
-                        : widget.groupColor,
+                        : AppColors.accent,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   alignment: Alignment.center,
                   child: _adding
-                      ? SizedBox(width: 16, height: 16,
+                      ? const SizedBox(width: 16, height: 16,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: widget.groupColor))
+                              strokeWidth: 2, color: AppColors.accent))
                       : const Icon(Icons.person_add_rounded,
                           color: Colors.white, size: 18),
                 ),
@@ -2604,6 +2604,161 @@ class _UpiAppButton extends StatelessWidget {
   );
 }
 
+// ── Main Activity Tab (cross-group feed shown on main Hisaab screen) ─────
+class _MainActivityTab extends StatefulWidget {
+  final List<SettleGroup> groups;
+  final String currentUid;
+  const _MainActivityTab({required this.groups, required this.currentUid});
+  @override
+  State<_MainActivityTab> createState() => _MainActivityTabState();
+}
+
+class _MainActivityTabState extends State<_MainActivityTab> {
+  List<SettleExpense> _items = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (!mounted) return;
+    setState(() => _loading = true);
+    if (widget.groups.isEmpty) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+    try {
+      final groupIds = widget.groups.map((g) => g.id).toList();
+      final rows = await _db
+          .from('settle_expenses')
+          .select()
+          .inFilter('group_id', groupIds)
+          .order('expense_date', ascending: false)
+          .order('created_at', ascending: false)
+          .limit(50);
+      if (mounted) {
+        setState(() {
+          _items = (rows as List)
+              .map((r) => SettleExpense.fromJson(r as Map<String, dynamic>))
+              .toList();
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('MainActivityTab._load: $e');
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _timeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1)  return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24)   return '${diff.inHours}h ago';
+    if (diff.inDays < 7)     return '${diff.inDays}d ago';
+    return DateFormat('d MMM').format(dt);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(
+          strokeWidth: 2, color: AppColors.accent));
+    }
+    if (_items.isEmpty) {
+      return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.timeline_rounded, color: AppColors.text3, size: 36),
+        const SizedBox(height: 12),
+        const Text('No activity yet', style: TextStyle(
+          fontFamily: 'DMSans', fontSize: 15,
+          fontWeight: FontWeight.w600, color: AppColors.text)),
+        const SizedBox(height: 6),
+        const Text('Add expenses to groups to see activity here.',
+          style: TextStyle(fontFamily: 'DMSans', fontSize: 12,
+              color: AppColors.text3), textAlign: TextAlign.center),
+        const SizedBox(height: 16),
+        GestureDetector(
+          onTap: _load,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.bg3,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.border)),
+            child: const Text('Refresh', style: TextStyle(
+                fontFamily: 'DMSans', fontSize: 12,
+                color: AppColors.text2))),
+        ),
+      ]));
+    }
+    return RefreshIndicator(
+      color: AppColors.accent,
+      onRefresh: _load,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+        itemCount: _items.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        itemBuilder: (ctx, i) {
+          final e = _items[i];
+          final group = widget.groups.firstWhere((g) => g.id == e.groupId,
+              orElse: () => SettleGroup(
+                  id: '', name: 'Unknown', currency: 'INR',
+                  category: 'general', coverColor: '#7B5FFF',
+                  createdAt: DateTime.now()));
+          return Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.bg2,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.border)),
+            child: Row(children: [
+              Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(
+                  color: (e.isSettlement ? AppColors.green : AppColors.accent)
+                      .withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(10)),
+                alignment: Alignment.center,
+                child: Icon(
+                  e.isSettlement
+                      ? Icons.check_circle_outline_rounded
+                      : Icons.receipt_outlined,
+                  color: e.isSettlement ? AppColors.green : AppColors.accent,
+                  size: 18),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(e.title, style: const TextStyle(
+                    fontFamily: 'DMSans', fontSize: 13.5,
+                    fontWeight: FontWeight.w600, color: AppColors.text)),
+                  const SizedBox(height: 2),
+                  Text(group.name, style: const TextStyle(
+                      fontFamily: 'DMSans', fontSize: 10.5,
+                      color: AppColors.text3)),
+                ],
+              )),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Text(fmtP(e.amount), style: TextStyle(
+                  fontFamily: 'DMMono', fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: e.isSettlement ? AppColors.green : AppColors.text)),
+                Text(_timeAgo(e.expenseDate), style: const TextStyle(
+                  fontFamily: 'DMSans', fontSize: 9.5,
+                  color: AppColors.text3)),
+              ]),
+            ]),
+          );
+        },
+      ),
+    );
+  }
+}
+
 // ── Activity feed tab ─────────────────────────────────────────
 class _ActivitiesTab extends StatelessWidget {
   final List<Map<String, dynamic>> activities;
@@ -2653,7 +2808,7 @@ class _ActivitiesTab extends StatelessWidget {
   Widget build(BuildContext context) {
     if (activities.isEmpty) {
       return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.timeline_rounded, color: groupColor.withValues(alpha: 0.40),
+        const Icon(Icons.timeline_rounded, color: AppColors.text3,
             size: 36),
         const SizedBox(height: 12),
         const Text('No activity yet', style: TextStyle(
@@ -2696,15 +2851,15 @@ class _ActivitiesTab extends StatelessWidget {
               Container(
                 width: 10, height: 10,
                 decoration: BoxDecoration(
-                  color: groupColor,
+                  color: AppColors.accent,
                   shape: BoxShape.circle,
                   boxShadow: [BoxShadow(
-                    color: groupColor.withValues(alpha: 0.40),
+                    color: AppColors.accent.withValues(alpha: 0.40),
                     blurRadius: 6)]),
               ),
               if (i < activities.length - 1)
                 Container(width: 2, height: 40,
-                    color: groupColor.withValues(alpha: 0.15)),
+                    color: AppColors.accent.withValues(alpha: 0.15)),
             ]),
             const SizedBox(width: 12),
             Expanded(child: Column(
@@ -2715,8 +2870,8 @@ class _ActivitiesTab extends StatelessWidget {
                       fontSize: 13, color: AppColors.text),
                   children: [
                     TextSpan(text: _actorName(a),
-                        style: TextStyle(fontWeight: FontWeight.w700,
-                            color: groupColor)),
+                        style: const TextStyle(fontWeight: FontWeight.w700,
+                            color: AppColors.accent)),
                     const TextSpan(text: ' '),
                     TextSpan(text: _actionLabel(action, meta)),
                   ],
@@ -2904,17 +3059,31 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
             Container(
               width: 34, height: 34,
               decoration: BoxDecoration(
-                color: widget.groupColor.withValues(alpha: 0.12),
+                color: AppColors.accent.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(9),
               ),
               alignment: Alignment.center,
-              child: Icon(Icons.receipt_outlined,
-                  color: widget.groupColor, size: 18),
+              child: const Icon(Icons.receipt_outlined,
+                  color: AppColors.accent, size: 18),
             ),
             const SizedBox(width: 12),
             const Text('Add Expense', style: TextStyle(
               fontFamily: 'DMSans', fontSize: 16,
               fontWeight: FontWeight.w700, color: AppColors.text)),
+            const Spacer(),
+            GestureDetector(
+              onTap: () => Navigator.of(context).pop(),
+              child: Container(
+                width: 30, height: 30,
+                decoration: BoxDecoration(
+                  color: AppColors.bg3,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.border)),
+                alignment: Alignment.center,
+                child: const Icon(Icons.close_rounded,
+                    color: AppColors.text2, size: 16),
+              ),
+            ),
           ]),
           const SizedBox(height: 12),
 
@@ -2927,21 +3096,21 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                 height: 36,
                 decoration: BoxDecoration(
                   color: !_restaurantMode
-                      ? widget.groupColor.withValues(alpha: 0.15)
+                      ? AppColors.accent.withValues(alpha: 0.15)
                       : AppColors.bg3,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                       color: !_restaurantMode
-                          ? widget.groupColor.withValues(alpha: 0.40)
+                          ? AppColors.accent.withValues(alpha: 0.40)
                           : AppColors.border)),
                 alignment: Alignment.center,
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.bolt_rounded, size: 14,
-                      color: !_restaurantMode ? widget.groupColor : AppColors.text3),
+                      color: !_restaurantMode ? AppColors.accent : AppColors.text3),
                   const SizedBox(width: 4),
                   Text('Quick Add', style: TextStyle(fontFamily: 'DMSans',
                       fontSize: 12, fontWeight: FontWeight.w600,
-                      color: !_restaurantMode ? widget.groupColor : AppColors.text3)),
+                      color: !_restaurantMode ? AppColors.accent : AppColors.text3)),
                 ]),
               ),
             )),
@@ -3034,18 +3203,18 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                                 horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
                               color: active
-                                  ? widget.groupColor.withValues(alpha: 0.20)
+                                  ? AppColors.accent.withValues(alpha: 0.20)
                                   : AppColors.bg4,
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
                                   color: active
-                                      ? widget.groupColor.withValues(alpha: 0.50)
+                                      ? AppColors.accent.withValues(alpha: 0.50)
                                       : AppColors.border)),
                             child: Text(
                               m.userId == widget.currentUid ? 'You' : m.name,
                               style: TextStyle(fontFamily: 'DMSans',
                                   fontSize: 10.5, fontWeight: FontWeight.w600,
-                                  color: active ? widget.groupColor
+                                  color: active ? AppColors.accent
                                       : AppColors.text3)),
                           ),
                         );
@@ -3152,12 +3321,12 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                           horizontal: 12, vertical: 0),
                       decoration: BoxDecoration(
                         color: active
-                            ? widget.groupColor.withValues(alpha: 0.18)
+                            ? AppColors.accent.withValues(alpha: 0.18)
                             : AppColors.bg3,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                           color: active
-                              ? widget.groupColor.withValues(alpha: 0.50)
+                              ? AppColors.accent.withValues(alpha: 0.50)
                               : AppColors.border),
                       ),
                       alignment: Alignment.center,
@@ -3165,7 +3334,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                         m.userId == widget.currentUid ? 'You' : m.name,
                         style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: active ? widget.groupColor
+                            color: active ? AppColors.accent
                                 : AppColors.text2)),
                     ),
                   ),
@@ -3191,12 +3360,12 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                     height: 34,
                     decoration: BoxDecoration(
                       color: _splitMode == mode
-                          ? widget.groupColor.withValues(alpha: 0.15)
+                          ? AppColors.accent.withValues(alpha: 0.15)
                           : AppColors.bg3,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: _splitMode == mode
-                            ? widget.groupColor.withValues(alpha: 0.50)
+                            ? AppColors.accent.withValues(alpha: 0.50)
                             : AppColors.border),
                     ),
                     alignment: Alignment.center,
@@ -3206,7 +3375,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                       style: TextStyle(fontFamily: 'DMSans',
                           fontSize: 11, fontWeight: FontWeight.w600,
                           color: _splitMode == mode
-                              ? widget.groupColor : AppColors.text2)),
+                              ? AppColors.accent : AppColors.text2)),
                   ),
                 ),
               )),
@@ -3221,9 +3390,9 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
             child: ElevatedButton(
               onPressed: _loading ? null : _submit,
               style: ElevatedButton.styleFrom(
-                backgroundColor: widget.groupColor,
+                backgroundColor: AppColors.accent,
                 foregroundColor: Colors.white,
-                disabledBackgroundColor: widget.groupColor.withValues(alpha: 0.5),
+                disabledBackgroundColor: AppColors.accent.withValues(alpha: 0.5),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
                 elevation: 0,
