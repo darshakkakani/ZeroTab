@@ -1,29 +1,37 @@
 // ignore_for_file: use_build_context_synchronously
 //
 // Holding Chart Screen — Dhan-style detail page for a single holding.
+//
+// Pure-Dart rendering — no WebView. Works identically on Flutter Web
+// (github.io) and on mobile (Android / iOS), because everything is
+// drawn by Flutter's own canvas:
+//   • Area / Line views use fl_chart's LineChart (gradient fills,
+//     dashed crosshair, built-in touch gestures, tooltip).
+//   • Candle view is a custom CustomPainter widget that shares the
+//     same y-scale + crosshair behaviour, so it visually matches
+//     Dhan's candlestick view.
+//
+// Data sources (free, no auth):
+//   • Stocks/ETFs/Commodities → Yahoo Finance v8 chart (OHLCV plus a
+//     rich meta block — 52-week range, day range, volume, exchange,
+//     long name). On Flutter Web, calls transparently route through
+//     corsproxy.io (see chart_data_service.dart).
+//   • Mutual funds → api.mfapi.in (daily NAV history).
+//
 // Layout (top → bottom):
-//   • Compact app-bar with name, symbol, exchange, "Delayed 15 min" pill
-//   • Hero price block (large tabular figure + TF change %)
-//   • Chart-type + indicator chips (Area / Candle / Line · MA20 · MA50 · EMA9 · Volume)
-//   • Chart surface (≈38% of screen) — TradingView Lightweight Charts
-//     loaded via WebView; on web the HTML still runs but data fetches
-//     transparently route through corsproxy.io so the chart actually
-//     renders.
-//   • Timeframe selector (1D · 5D · 1M · 3M · 6M · 1Y · 5Y · All)
-//   • Tab bar — Overview · Performance · Similar
-//   • Tab content (scrollable, Dhan-style):
-//       Overview   → company name, exchange, instrument, today's range,
-//                    52-week range, volume, holding summary card
-//       Performance→ 1D/1W/1M/3M/6M/1Y absolute & % returns derived from
-//                    the chart history; visual bar plot
-//       Similar    → sector peers (hard-coded sector→ticker map) tappable
-//                    to navigate into the chart for that peer
+//   • App-bar: name, symbol, exchange, "Delayed 15 min" / "NAV (EOD)" pill
+//   • Hero price block (tabular figure + TF change %)
+//   • Tool strip: Area / Candle / Line chips + MA20 / MA50 / EMA9 / Vol toggles
+//   • Chart canvas (~36 % of screen)
+//   • Timeframe row: 1D / 5D / 1M / 3M / 6M / 1Y / 5Y / All
+//   • TabBar: Overview · Performance · Similar
 
 import 'dart:async';
-import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/models/models.dart';
@@ -71,8 +79,6 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
     with SingleTickerProviderStateMixin {
   final ChartDataService _svc = ChartDataService();
 
-  late WebViewController _wv;
-  bool _wvReady = false;
   bool _loading = true;
   String? _error;
 
@@ -90,7 +96,7 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
   QuoteMeta?   _meta;
   _CrossInfo?  _cross;
 
-  // Cache fetches per (tf, kind, ticker) so timeframe re-taps are instant.
+  // Cache: per (symbol, exchange, tf) so re-tapping timeframes is instant.
   final Map<String, ChartFetchResult> _cache = {};
 
   @override
@@ -106,7 +112,7 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
       _tfIdx = 0;
     }
     _showVolume = widget.kind != HoldingKind.mf;
-    _initWebView();
+    _fetchAndRender();
   }
 
   @override
@@ -116,8 +122,7 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
   }
 
   // ─────────────────────────────────────────────────────────────
-  //  Resolved symbol/exchange/name — uses overrides when this screen
-  //  is opened as a peer drill-down.
+  //  Resolved symbol/exchange/name — uses overrides for peer drill-down
   // ─────────────────────────────────────────────────────────────
   String get _symbolOrCode {
     if (widget.overrideSymbol != null) return widget.overrideSymbol!;
@@ -142,59 +147,7 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
   bool get _isPeer => widget.overrideSymbol != null;
 
   // ─────────────────────────────────────────────────────────────
-  //  WebView setup
-  // ─────────────────────────────────────────────────────────────
-  void _initWebView() {
-    _wv = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0xFF0A0820))
-      ..addJavaScriptChannel('FlutterChart', onMessageReceived: _onJsMessage)
-      ..setNavigationDelegate(NavigationDelegate(
-        onWebResourceError: (e) {
-          if (mounted) setState(() => _error = 'Chart engine: ${e.description}');
-        },
-      ))
-      ..loadFlutterAsset('assets/charts/tradingview_chart.html');
-  }
-
-  void _onJsMessage(JavaScriptMessage m) {
-    try {
-      final msg = jsonDecode(m.message) as Map<String, dynamic>;
-      switch (msg['type']) {
-        case 'ready':
-          _wvReady = true;
-          _fetchAndRender();
-          break;
-        case 'cross':
-          setState(() => _cross = _CrossInfo(
-                time:  (msg['t'] as num).toInt(),
-                close: (msg['c'] as num).toDouble(),
-                open:  (msg['o'] as num?)?.toDouble(),
-                high:  (msg['h'] as num?)?.toDouble(),
-                low:   (msg['l'] as num?)?.toDouble(),
-                volume:(msg['v'] as num?)?.toDouble(),
-              ));
-          break;
-        case 'cross_clear':
-          if (_cross != null) setState(() => _cross = null);
-          break;
-        case 'js_error':
-          debugPrint('[chart js] ${msg['msg']}');
-          break;
-      }
-    } catch (e) {
-      debugPrint('chart channel parse: $e');
-    }
-  }
-
-  Future<void> _post(Map<String, dynamic> payload) async {
-    if (!_wvReady) return;
-    final js = jsonEncode(payload);
-    await _wv.runJavaScript('window.__chartHandle && window.__chartHandle($js);');
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  //  Data fetch + render
+  //  Data fetch
   // ─────────────────────────────────────────────────────────────
   String get _cacheKey {
     final tf = _tfs[_tfIdx];
@@ -211,8 +164,7 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
       if (_cache[key] != null) {
         res = _cache[key]!;
       } else if (widget.kind == HoldingKind.mf) {
-        res = await _svc.fetchMF(
-          schemeCode: _symbolOrCode, tf: tf);
+        res = await _svc.fetchMF(schemeCode: _symbolOrCode, tf: tf);
         _cache[key] = res;
       } else {
         final ticker = _svc.yahooTicker(
@@ -220,57 +172,16 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
         res = await _svc.fetchYahoo(ticker: ticker, tf: tf);
         _cache[key] = res;
       }
-      _bars = res.bars;
-      _meta = res.meta;
-
-      await _pushToChart();
-      if (mounted) setState(() => _loading = false);
+      if (!mounted) return;
+      setState(() {
+        _bars = res.bars;
+        _meta = res.meta;
+        _loading = false;
+      });
     } catch (e) {
       if (mounted) setState(() {
         _loading = false;
         _error = _friendly(e.toString());
-      });
-    }
-  }
-
-  Future<void> _pushToChart() async {
-    final candleJson = _bars.map((b) => b.toCandleJson()).toList();
-    final volumeJson = _showVolume && widget.kind != HoldingKind.mf
-        ? List<Map<String, dynamic>>.generate(_bars.length, (i) {
-            final up = i == 0
-                ? _bars[i].close >= _bars[i].open
-                : _bars[i].close >= _bars[i - 1].close;
-            return _bars[i].toVolumeJson(up);
-          })
-        : null;
-    await _post({'type': 'volume', 'enabled': volumeJson != null});
-    await _post({
-      'type': 'data',
-      'bars': candleJson,
-      if (volumeJson != null) 'volume': volumeJson,
-    });
-    await _post({
-      'type': 'kind',
-      'kind': _kind == _ChartKind.candle
-          ? 'candle' : _kind == _ChartKind.line ? 'line' : 'area',
-    });
-    await _post({'type': 'clear_overlays'});
-    if (_ma20) {
-      await _post({
-        'type': 'overlay', 'name': 'ma20', 'color': '#E8A422', 'width': 1.4,
-        'data': Indicators.sma(_bars, 20).map((p) => p.toJson()).toList(),
-      });
-    }
-    if (_ma50) {
-      await _post({
-        'type': 'overlay', 'name': 'ma50', 'color': '#00C4A8', 'width': 1.4,
-        'data': Indicators.sma(_bars, 50).map((p) => p.toJson()).toList(),
-      });
-    }
-    if (_ema9) {
-      await _post({
-        'type': 'overlay', 'name': 'ema9', 'color': '#7B5FFF', 'width': 1.4,
-        'data': Indicators.ema(_bars, 9).map((p) => p.toJson()).toList(),
       });
     }
   }
@@ -285,9 +196,6 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
     }
     if (e.contains('No NAV') || e.contains('NAV history')) {
       return 'No NAV history found for this scheme';
-    }
-    if (e.contains('CORS') || e.contains('XMLHttpRequest')) {
-      return 'Network blocked by browser. Try again in a moment.';
     }
     return 'Unable to load chart data';
   }
@@ -310,9 +218,7 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
     final col = up ? AppColors.green : AppColors.red;
 
     final screenH = MediaQuery.of(context).size.height;
-    // Chart takes ~36% of total height (premium-feeling on phones,
-    // doesn't dominate on tablets).
-    final chartH  = (screenH * 0.36).clamp(220.0, 360.0);
+    final chartH  = (screenH * 0.32).clamp(200.0, 340.0);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -320,42 +226,8 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
         _topBar(),
         _heroPrice(ltp: ltp, tfAbs: tfAbs, tfPct: tfPct, up: up, col: col),
         _toolStrip(),
-        SizedBox(
-          height: chartH,
-          child: Stack(children: [
-            WebViewWidget(controller: _wv),
-            if (_loading) Container(
-              color: AppColors.bg.withValues(alpha: 0.55),
-              alignment: Alignment.center,
-              child: const SizedBox(width: 22, height: 22,
-                child: CircularProgressIndicator(
-                  color: AppColors.accent, strokeWidth: 1.6)),
-            ),
-            if (_error != null) Container(
-              color: AppColors.bg,
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              alignment: Alignment.center,
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.signal_cellular_nodata_rounded,
-                    color: AppColors.text3, size: 26),
-                const SizedBox(height: 8),
-                Text(_error!, textAlign: TextAlign.center,
-                  style: const TextStyle(fontFamily: 'DMSans', fontSize: 12,
-                      color: AppColors.text2)),
-                const SizedBox(height: 10),
-                OutlinedButton(
-                  onPressed: () { _cache.remove(_cacheKey); _fetchAndRender(); },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.accent,
-                    side: const BorderSide(color: AppColors.border)),
-                  child: const Text('Retry'),
-                ),
-              ]),
-            ),
-          ]),
-        ),
+        SizedBox(height: chartH, child: _buildChart()),
         _timeframeBar(),
-        // ── Tabs ──
         Container(
           decoration: const BoxDecoration(border: Border(
             bottom: BorderSide(color: AppColors.border, width: 1))),
@@ -387,6 +259,66 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
           _similarTab(),
         ])),
       ])),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  //  Chart canvas (pure Flutter — works on every platform)
+  // ─────────────────────────────────────────────────────────────
+  Widget _buildChart() {
+    if (_error != null) {
+      return Container(
+        color: AppColors.bg,
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        alignment: Alignment.center,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.signal_cellular_nodata_rounded,
+              color: AppColors.text3, size: 26),
+          const SizedBox(height: 8),
+          Text(_error!, textAlign: TextAlign.center,
+            style: const TextStyle(fontFamily: 'DMSans', fontSize: 12,
+                color: AppColors.text2)),
+          const SizedBox(height: 10),
+          OutlinedButton(
+            onPressed: () { _cache.remove(_cacheKey); _fetchAndRender(); },
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.accent,
+              side: const BorderSide(color: AppColors.border)),
+            child: const Text('Retry'),
+          ),
+        ]),
+      );
+    }
+    if (_loading && _bars.isEmpty) {
+      return const Center(child: SizedBox(width: 22, height: 22,
+        child: CircularProgressIndicator(
+          color: AppColors.accent, strokeWidth: 1.6)));
+    }
+    if (_bars.length < 2) {
+      return const Center(child: Text('Not enough data points',
+        style: TextStyle(fontFamily: 'DMSans', fontSize: 12,
+            color: AppColors.text3)));
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      child: _kind == _ChartKind.candle
+          ? _CandleChartView(
+              bars: _bars,
+              ma20: _ma20 ? Indicators.sma(_bars, 20) : const [],
+              ma50: _ma50 ? Indicators.sma(_bars, 50) : const [],
+              ema9: _ema9 ? Indicators.ema(_bars,  9) : const [],
+              showVolume: _showVolume,
+              onCross: (c) => setState(() => _cross = c),
+            )
+          : _AreaLineChartView(
+              bars: _bars,
+              filled: _kind == _ChartKind.area,
+              ma20: _ma20 ? Indicators.sma(_bars, 20) : const [],
+              ma50: _ma50 ? Indicators.sma(_bars, 50) : const [],
+              ema9: _ema9 ? Indicators.ema(_bars,  9) : const [],
+              showVolume: _showVolume,
+              onCross: (c) => setState(() => _cross = c),
+            ),
     );
   }
 
@@ -504,19 +436,15 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
         Container(width: 1, height: 16, color: AppColors.border2,
             margin: const EdgeInsets.symmetric(vertical: 6)),
         const SizedBox(width: 8),
-        _indChip('MA 20', _ma20, AppColors.gold, () {
-          setState(() => _ma20 = !_ma20); _pushToChart();
-        }),
-        _indChip('MA 50', _ma50, AppColors.teal, () {
-          setState(() => _ma50 = !_ma50); _pushToChart();
-        }),
-        _indChip('EMA 9', _ema9, AppColors.accent, () {
-          setState(() => _ema9 = !_ema9); _pushToChart();
-        }),
+        _indChip('MA 20', _ma20, AppColors.gold, () =>
+            setState(() => _ma20 = !_ma20)),
+        _indChip('MA 50', _ma50, AppColors.teal, () =>
+            setState(() => _ma50 = !_ma50)),
+        _indChip('EMA 9', _ema9, AppColors.accent, () =>
+            setState(() => _ema9 = !_ema9)),
         if (widget.kind != HoldingKind.mf)
-          _indChip('Vol', _showVolume, AppColors.accent2, () {
-            setState(() => _showVolume = !_showVolume); _pushToChart();
-          }),
+          _indChip('Vol', _showVolume, AppColors.accent2, () =>
+              setState(() => _showVolume = !_showVolume)),
       ]),
     ),
   );
@@ -526,15 +454,7 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
     return Padding(
       padding: const EdgeInsets.only(right: 5),
       child: GestureDetector(
-        onTap: () async {
-          if (k == _kind) return;
-          setState(() => _kind = k);
-          await _post({
-            'type': 'kind',
-            'kind': k == _ChartKind.candle
-                ? 'candle' : k == _ChartKind.line ? 'line' : 'area',
-          });
-        },
+        onTap: () { if (k != _kind) setState(() => _kind = k); },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
@@ -718,9 +638,6 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
 
   // ─── Performance tab ────────────────────────────────────────
   Widget _performanceTab() {
-    // Compute returns at canonical look-backs from the LATEST chart we
-    // happen to have. We need long-horizon data to fill 1Y/5Y, so we
-    // pull the "All" cache if not already loaded.
     return FutureBuilder<List<_PerfRow>>(
       future: _computePerformance(),
       builder: (ctx, snap) {
@@ -776,9 +693,7 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
   }
 
   Future<List<_PerfRow>> _computePerformance() async {
-    // Need a long series — use ALL timeframe (cache if not loaded).
-    final allTf = widget.kind == HoldingKind.mf
-        ? ChartTimeframes.all : ChartTimeframes.all;
+    const allTf = ChartTimeframes.all;
     final key = '$_symbolOrCode-$_exchange-${allTf.label}';
     ChartFetchResult? res = _cache[key];
     try {
@@ -873,7 +788,6 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
     );
   }
 
-  // ─── Holding summary card ───────────────────────────────────
   Widget _summaryCard() {
     final h    = widget.holding;
     final qty  = widget.kind == HoldingKind.stock ? h.stockQty : (h.units ?? 0);
@@ -958,7 +872,7 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
   }
 }
 
-// ─── Internal value-types ─────────────────────────────────────
+// ─── value types ─────────────────────────────────────────────
 class _Stat {
   final String label, value;
   final String? sub;
@@ -972,7 +886,7 @@ class _PerfRow {
   const _PerfRow({required this.label, required this.pct, required this.pctAbs});
 }
 
-// 52-week range visual
+// ─── 52-week range visual ────────────────────────────────────
 class _RangeBar extends StatelessWidget {
   final double low, high, current;
   const _RangeBar({required this.low, required this.high, required this.current});
@@ -1027,7 +941,471 @@ class _RangeBar extends StatelessWidget {
   }
 }
 
-// Sector-peer row — fetches a 1D quick quote async to show LTP + day %.
+// ═══════════════════════════════════════════════════════════════
+//  Area / Line chart view (fl_chart)
+// ═══════════════════════════════════════════════════════════════
+class _AreaLineChartView extends StatelessWidget {
+  final List<Candle> bars;
+  final bool filled;
+  final List<IndicatorPoint> ma20, ma50, ema9;
+  final bool showVolume;
+  final ValueChanged<_CrossInfo?> onCross;
+  const _AreaLineChartView({
+    required this.bars, required this.filled,
+    required this.ma20, required this.ma50, required this.ema9,
+    required this.showVolume, required this.onCross,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final closes = bars.map((b) => b.close).toList(growable: false);
+    double minY = closes.first, maxY = closes.first;
+    for (final v in closes) {
+      if (v < minY) minY = v;
+      if (v > maxY) maxY = v;
+    }
+    for (final i in [...ma20, ...ma50, ...ema9]) {
+      if (i.value < minY) minY = i.value;
+      if (i.value > maxY) maxY = i.value;
+    }
+    final pad = (maxY - minY) * 0.08;
+    if (pad == 0) { minY -= 1; maxY += 1; } else { minY -= pad; maxY += pad; }
+
+    final up = bars.last.close >= bars.first.close;
+    final lineColor = up ? AppColors.green : AppColors.red;
+
+    final mainSpots = <FlSpot>[
+      for (int i = 0; i < bars.length; i++)
+        FlSpot(i.toDouble(), bars[i].close),
+    ];
+
+    LineChartBarData lineSeries(List<IndicatorPoint> pts, Color c) {
+      final spots = <FlSpot>[];
+      // Map indicator times → bar indices using a hash to find x.
+      final timeToIdx = <int, int>{
+        for (int i = 0; i < bars.length; i++) bars[i].timeSec: i,
+      };
+      for (final p in pts) {
+        final i = timeToIdx[p.time];
+        if (i != null) spots.add(FlSpot(i.toDouble(), p.value));
+      }
+      return LineChartBarData(
+        spots: spots,
+        isCurved: false,
+        color: c,
+        barWidth: 1.3,
+        isStrokeCapRound: true,
+        dotData: const FlDotData(show: false),
+      );
+    }
+
+    return LineChart(
+      LineChartData(
+        minY: minY, maxY: maxY,
+        minX: 0, maxX: (bars.length - 1).toDouble(),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: ((maxY - minY) / 4).clamp(0.0001, double.infinity),
+          getDrawingHorizontalLine: (_) => const FlLine(
+            color: Color(0x14FFFFFF), strokeWidth: 1),
+        ),
+        titlesData: FlTitlesData(
+          show: true,
+          rightTitles: AxisTitles(sideTitles: SideTitles(
+            showTitles: true, reservedSize: 48,
+            getTitlesWidget: (v, _) => Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: Text('₹${v.toStringAsFixed(0)}',
+                style: const TextStyle(fontFamily: 'DMMono', fontSize: 9.5,
+                  color: AppColors.text3)),
+            ),
+          )),
+          leftTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles:    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(sideTitles: SideTitles(
+            showTitles: true, reservedSize: 22,
+            interval: (bars.length / 4).clamp(1, double.infinity),
+            getTitlesWidget: (v, _) {
+              final i = v.toInt();
+              if (i < 0 || i >= bars.length) return const SizedBox.shrink();
+              final t = DateTime.fromMillisecondsSinceEpoch(
+                  bars[i].timeSec * 1000, isUtc: false);
+              return Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(DateFormat('d MMM').format(t),
+                  style: const TextStyle(fontFamily: 'DMSans', fontSize: 9,
+                      color: AppColors.text3)),
+              );
+            },
+          )),
+        ),
+        borderData: FlBorderData(show: false),
+        lineBarsData: [
+          LineChartBarData(
+            spots: mainSpots,
+            isCurved: false,
+            color: lineColor,
+            barWidth: 1.8,
+            isStrokeCapRound: true,
+            dotData: const FlDotData(show: false),
+            belowBarData: filled
+              ? BarAreaData(show: true, gradient: LinearGradient(
+                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                  colors: [
+                    lineColor.withOpacity(0.28),
+                    lineColor.withOpacity(0.00),
+                  ]))
+              : BarAreaData(show: false),
+          ),
+          if (ma20.isNotEmpty) lineSeries(ma20, AppColors.gold),
+          if (ma50.isNotEmpty) lineSeries(ma50, AppColors.teal),
+          if (ema9.isNotEmpty) lineSeries(ema9, AppColors.accent),
+        ],
+        lineTouchData: LineTouchData(
+          enabled: true,
+          handleBuiltInTouches: true,
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (_) => AppColors.bg2,
+            tooltipBorder: const BorderSide(color: AppColors.border),
+            tooltipPadding: const EdgeInsets.symmetric(
+                horizontal: 10, vertical: 6),
+            getTooltipItems: (items) => items.map((it) {
+              if (it.barIndex != 0) return null; // only show tooltip for main
+              final i = it.x.toInt().clamp(0, bars.length - 1);
+              final b = bars[i];
+              return LineTooltipItem(
+                '₹${b.close.toStringAsFixed(2)}\n${DateFormat('d MMM yyyy').format(DateTime.fromMillisecondsSinceEpoch(b.timeSec * 1000, isUtc: false))}',
+                const TextStyle(fontFamily: 'DMMono', fontSize: 11,
+                  fontWeight: FontWeight.w600, color: AppColors.text),
+              );
+            }).toList(),
+          ),
+          getTouchedSpotIndicator: (_, indicators) => indicators.map((_) =>
+            TouchedSpotIndicatorData(
+              FlLine(color: lineColor.withOpacity(0.5), strokeWidth: 1,
+                  dashArray: [4, 4]),
+              FlDotData(show: true, getDotPainter: (s, _, __, ___) =>
+                FlDotCirclePainter(radius: 3.5,
+                  color: lineColor, strokeWidth: 2, strokeColor: AppColors.bg)),
+            )).toList(),
+          touchCallback: (event, response) {
+            if (!event.isInterestedForInteractions ||
+                response == null || response.lineBarSpots == null ||
+                response.lineBarSpots!.isEmpty) {
+              onCross(null);
+              return;
+            }
+            final i = response.lineBarSpots!.first.x.toInt()
+                .clamp(0, bars.length - 1);
+            final b = bars[i];
+            onCross(_CrossInfo(
+              time: b.timeSec, close: b.close,
+              open: b.open, high: b.high, low: b.low, volume: b.volume,
+            ));
+          },
+        ),
+      ),
+      duration: const Duration(milliseconds: 250),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Candlestick chart view (CustomPainter)
+//  Renders candles + optional MA/EMA overlays + optional volume,
+//  with a manual touch-driven crosshair that mirrors fl_chart's UX.
+// ═══════════════════════════════════════════════════════════════
+class _CandleChartView extends StatefulWidget {
+  final List<Candle> bars;
+  final List<IndicatorPoint> ma20, ma50, ema9;
+  final bool showVolume;
+  final ValueChanged<_CrossInfo?> onCross;
+  const _CandleChartView({
+    required this.bars,
+    required this.ma20, required this.ma50, required this.ema9,
+    required this.showVolume, required this.onCross,
+  });
+
+  @override
+  State<_CandleChartView> createState() => _CandleChartViewState();
+}
+
+class _CandleChartViewState extends State<_CandleChartView> {
+  Offset? _touch;
+
+  void _setTouch(Offset? p, Size size) {
+    setState(() => _touch = p);
+    if (p == null) {
+      widget.onCross(null);
+      return;
+    }
+    // axes inset must match the painter; keep them in lockstep.
+    const right = 50.0, bottom = 22.0, left = 0.0, top = 6.0;
+    final plotW = size.width - left - right;
+    if (plotW <= 0) return;
+    final n = widget.bars.length;
+    final i = ((p.dx - left) / plotW * n).floor().clamp(0, n - 1);
+    final b = widget.bars[i];
+    widget.onCross(_CrossInfo(
+      time: b.timeSec, close: b.close,
+      open: b.open, high: b.high, low: b.low, volume: b.volume,
+    ));
+    // Ensure paint axes still match.
+    // ignore: unused_local_variable
+    final _ = top + bottom;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (ctx, c) {
+      final size = Size(c.maxWidth, c.maxHeight);
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown:   (d) => _setTouch(d.localPosition, size),
+        onPanStart:  (d) => _setTouch(d.localPosition, size),
+        onPanUpdate: (d) => _setTouch(d.localPosition, size),
+        onPanCancel: () => _setTouch(null, size),
+        onTapCancel: () => _setTouch(null, size),
+        child: CustomPaint(
+          size: size,
+          painter: _CandlePainter(
+            bars: widget.bars,
+            ma20: widget.ma20,
+            ma50: widget.ma50,
+            ema9: widget.ema9,
+            showVolume: widget.showVolume,
+            touch: _touch,
+          ),
+        ),
+      );
+    });
+  }
+}
+
+class _CandlePainter extends CustomPainter {
+  final List<Candle> bars;
+  final List<IndicatorPoint> ma20, ma50, ema9;
+  final bool showVolume;
+  final Offset? touch;
+
+  _CandlePainter({
+    required this.bars,
+    required this.ma20, required this.ma50, required this.ema9,
+    required this.showVolume, required this.touch,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (bars.isEmpty) return;
+    const right  = 50.0;
+    const bottom = 22.0;
+    const top    = 6.0;
+    const left   = 0.0;
+    final plotW = size.width - left - right;
+    final plotH = size.height - top - bottom;
+    if (plotW <= 0 || plotH <= 0) return;
+
+    // ── Y scale across both candles and indicator values
+    double minY = bars.first.low, maxY = bars.first.high;
+    for (final b in bars) {
+      if (b.low  < minY) minY = b.low;
+      if (b.high > maxY) maxY = b.high;
+    }
+    for (final p in [...ma20, ...ma50, ...ema9]) {
+      if (p.value < minY) minY = p.value;
+      if (p.value > maxY) maxY = p.value;
+    }
+    final yPad = (maxY - minY) * 0.06;
+    if (yPad == 0) { minY -= 1; maxY += 1; } else { minY -= yPad; maxY += yPad; }
+    final yRange = (maxY - minY).clamp(0.0001, double.infinity);
+
+    double xOf(int i) => left + (i + 0.5) * (plotW / bars.length);
+    double yOf(double v) => top + (1 - (v - minY) / yRange) * plotH;
+
+    // Volume area = bottom 20% of plot. We carve it out by scaling
+    // candles into the upper 80 % when volumes are shown.
+    final candleTop   = top;
+    final candleBot   = showVolume ? top + plotH * 0.80 : top + plotH;
+    final volumeTop   = candleBot;
+    final volumeBot   = top + plotH;
+    final candleH     = candleBot - candleTop;
+    double yCOf(double v) =>
+        candleTop + (1 - (v - minY) / yRange) * candleH;
+
+    // ── Grid + Y-axis labels (4 horizontal lines)
+    final gridPaint = Paint()
+      ..color = const Color(0x14FFFFFF)
+      ..strokeWidth = 1;
+    final labelStyle = const TextStyle(
+      fontFamily: 'DMMono', fontSize: 9.5, color: AppColors.text3);
+    for (int i = 0; i <= 4; i++) {
+      final y = candleTop + (candleH * i / 4);
+      canvas.drawLine(
+        Offset(left, y), Offset(left + plotW, y), gridPaint);
+      final price = maxY - (maxY - minY) * (i / 4);
+      _drawText(canvas,
+          '₹${price.toStringAsFixed(0)}',
+          Offset(left + plotW + 6, y - 5), labelStyle);
+    }
+
+    // ── X-axis labels (4 evenly spaced)
+    for (int i = 0; i < 4; i++) {
+      final idx = ((bars.length - 1) * i / 3).round();
+      final t = DateTime.fromMillisecondsSinceEpoch(
+          bars[idx].timeSec * 1000, isUtc: false);
+      _drawText(canvas, DateFormat('d MMM').format(t),
+          Offset(xOf(idx) - 14, top + plotH + 4),
+          const TextStyle(fontFamily: 'DMSans', fontSize: 9,
+              color: AppColors.text3));
+    }
+
+    // ── Volume bars
+    if (showVolume) {
+      double maxVol = 1;
+      for (final b in bars) { if (b.volume > maxVol) maxVol = b.volume; }
+      final volH = volumeBot - volumeTop;
+      for (int i = 0; i < bars.length; i++) {
+        final b = bars[i];
+        if (b.volume <= 0) continue;
+        final up = i == 0
+            ? b.close >= b.open
+            : b.close >= bars[i - 1].close;
+        final color = (up ? AppColors.green : AppColors.red).withOpacity(0.4);
+        final bw = (plotW / bars.length) * 0.7;
+        final x  = xOf(i);
+        final h  = (b.volume / maxVol) * volH;
+        canvas.drawRect(
+          Rect.fromLTRB(x - bw/2, volumeBot - h, x + bw/2, volumeBot),
+          Paint()..color = color);
+      }
+    }
+
+    // ── Candles
+    final candleW = (plotW / bars.length) * 0.7;
+    final wickW   = math.max(1.0, candleW * 0.10);
+    for (int i = 0; i < bars.length; i++) {
+      final b = bars[i];
+      final up = b.close >= b.open;
+      final color = up ? AppColors.green : AppColors.red;
+      final x  = xOf(i);
+      // Wick
+      canvas.drawLine(
+        Offset(x, yCOf(b.high)),
+        Offset(x, yCOf(b.low)),
+        Paint()..color = color..strokeWidth = wickW);
+      // Body
+      final yo = yCOf(b.open), yc = yCOf(b.close);
+      final bodyTop    = math.min(yo, yc);
+      final bodyBottom = math.max(yo, yc);
+      final bodyH = math.max(1.0, bodyBottom - bodyTop);
+      canvas.drawRect(
+        Rect.fromLTWH(x - candleW/2, bodyTop, candleW, bodyH),
+        Paint()..color = color);
+    }
+
+    // ── Indicator overlays
+    void drawSeries(List<IndicatorPoint> pts, Color color) {
+      if (pts.isEmpty) return;
+      final timeToIdx = <int, int>{
+        for (int i = 0; i < bars.length; i++) bars[i].timeSec: i,
+      };
+      final path = Path();
+      bool started = false;
+      for (final p in pts) {
+        final i = timeToIdx[p.time];
+        if (i == null) continue;
+        final dx = xOf(i);
+        final dy = yCOf(p.value);
+        if (!started) { path.moveTo(dx, dy); started = true; }
+        else            path.lineTo(dx, dy);
+      }
+      canvas.drawPath(path, Paint()
+        ..color = color..style = PaintingStyle.stroke..strokeWidth = 1.3);
+    }
+    drawSeries(ma20, AppColors.gold);
+    drawSeries(ma50, AppColors.teal);
+    drawSeries(ema9, AppColors.accent);
+
+    // ── Crosshair (dashed lines + price + time labels)
+    if (touch != null) {
+      final t = touch!;
+      if (t.dx >= left && t.dx <= left + plotW &&
+          t.dy >= top  && t.dy <= top + plotH) {
+        final n = bars.length;
+        final i = ((t.dx - left) / plotW * n).floor().clamp(0, n - 1);
+        final x = xOf(i);
+        final crossPaint = Paint()
+          ..color = AppColors.accent.withOpacity(0.6)
+          ..strokeWidth = 1;
+        _dashedLine(canvas, Offset(x, top), Offset(x, top + plotH), crossPaint);
+        _dashedLine(canvas, Offset(left, t.dy),
+            Offset(left + plotW, t.dy), crossPaint);
+
+        // Price label on right axis
+        final price = maxY - ((t.dy - top) / plotH) * yRange;
+        final priceTxt = '₹${price.toStringAsFixed(2)}';
+        final tp = TextPainter(
+          text: TextSpan(text: priceTxt, style: const TextStyle(
+            fontFamily: 'DMMono', fontSize: 10, color: Colors.white,
+            fontWeight: FontWeight.w700)),
+          textDirection: ui.TextDirection.ltr,
+        )..layout();
+        final boxR = Rect.fromLTWH(
+            left + plotW + 2, t.dy - 8, tp.width + 8, 16);
+        canvas.drawRRect(RRect.fromRectAndRadius(boxR, const Radius.circular(3)),
+            Paint()..color = AppColors.accent);
+        tp.paint(canvas, Offset(boxR.left + 4, boxR.top + 1));
+
+        // Time label on x-axis
+        final tt = DateTime.fromMillisecondsSinceEpoch(
+            bars[i].timeSec * 1000, isUtc: false);
+        final tStr = DateFormat('d MMM').format(tt);
+        final tp2 = TextPainter(
+          text: TextSpan(text: tStr, style: const TextStyle(
+            fontFamily: 'DMSans', fontSize: 9.5, color: Colors.white,
+            fontWeight: FontWeight.w700)),
+          textDirection: ui.TextDirection.ltr,
+        )..layout();
+        final boxT = Rect.fromLTWH(
+            x - tp2.width/2 - 4, top + plotH + 2, tp2.width + 8, 14);
+        canvas.drawRRect(RRect.fromRectAndRadius(boxT, const Radius.circular(3)),
+            Paint()..color = AppColors.accent);
+        tp2.paint(canvas, Offset(boxT.left + 4, boxT.top + 0.5));
+      }
+    }
+  }
+
+  void _drawText(Canvas canvas, String s, Offset at, TextStyle st) {
+    final tp = TextPainter(
+      text: TextSpan(text: s, style: st),
+      textDirection: ui.TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, at);
+  }
+
+  void _dashedLine(Canvas canvas, Offset a, Offset b, Paint paint) {
+    const dash = 4.0, gap = 4.0;
+    final dist = (b - a).distance;
+    final dir  = (b - a) / dist;
+    double walked = 0;
+    while (walked < dist) {
+      final start = a + dir * walked;
+      final end   = a + dir * math.min(walked + dash, dist);
+      canvas.drawLine(start, end, paint);
+      walked += dash + gap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CandlePainter old) =>
+    old.bars  != bars || old.ma20 != ma20 || old.ma50 != ma50 ||
+    old.ema9  != ema9 || old.showVolume != showVolume || old.touch != touch;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Sector-peer row
+// ═══════════════════════════════════════════════════════════════
 class _PeerRow extends StatefulWidget {
   final String symbol, exchange;
   final ChartDataService svc;
@@ -1058,8 +1436,6 @@ class _PeerRowState extends State<_PeerRow> {
         symbol: widget.symbol,
         exchange: widget.exchange,
       );
-      // 1d/1m gives current price + previousClose in meta — that's all
-      // we need for the row's LTP + day %.
       final res = await widget.svc.fetchYahoo(
         ticker: ticker, tf: ChartTimeframes.intraday1d);
       final m = res.meta;
