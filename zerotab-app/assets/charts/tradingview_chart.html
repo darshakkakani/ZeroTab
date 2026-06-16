@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no">
+<title>ZeroTab Chart</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; width:100%; background:#0A0820; overflow:hidden; font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif; }
+  #chart  { position:absolute; inset:0; }
+  #ohlc {
+    position:absolute; top:6px; left:8px; right:8px;
+    pointer-events:none; font-family:'DM Mono',Menlo,monospace; font-size:10.5px;
+    color:#E6E3FF; line-height:1.5; z-index:5; display:none;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  }
+  #ohlc .lbl { color:#7E78A6; margin-right:2px; }
+  #ohlc .up  { color:#1EBF7A; }
+  #ohlc .dn  { color:#E04A3F; }
+  #ohlc .vol { color:#9F94D4; }
+  #loading {
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    color:#A29CC4; font-size:12px; letter-spacing:.3px;
+  }
+  #err {
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    color:#E04A3F; font-size:12px; max-width:80%; text-align:center; display:none;
+  }
+  .tv-attr { opacity:0.55; }
+</style>
+</head>
+<body>
+<div id="loading">Loading chart engine…</div>
+<div id="err"></div>
+<div id="chart"></div>
+<div id="ohlc"></div>
+
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+(function () {
+  // ── Bridge to Flutter ─────────────────────────────────────
+  function post(payload) {
+    try {
+      if (window.FlutterChart && typeof window.FlutterChart.postMessage === 'function') {
+        window.FlutterChart.postMessage(JSON.stringify(payload));
+      }
+    } catch (_) {}
+  }
+
+  function showErr(msg) {
+    document.getElementById('loading').style.display = 'none';
+    var el = document.getElementById('err');
+    el.style.display = 'block';
+    el.textContent = msg;
+  }
+
+  // ── Wait for the LWC global to load (CDN) ─────────────────
+  var attempts = 0;
+  function whenReady(cb) {
+    if (window.LightweightCharts) return cb();
+    attempts++;
+    if (attempts > 80) { showErr('Failed to load chart engine. Check internet and retry.'); return; }
+    setTimeout(function () { whenReady(cb); }, 80);
+  }
+
+  whenReady(function () {
+    document.getElementById('loading').style.display = 'none';
+
+    var chart = LightweightCharts.createChart(document.getElementById('chart'), {
+      layout: {
+        background: { type: 'solid', color: '#0A0820' },
+        textColor:  '#A29CC4',
+        fontFamily: 'DM Sans, sans-serif',
+        fontSize:   10,
+        attributionLogo: true,                 // Apache-2.0 attribution
+      },
+      grid: {
+        vertLines: { color: 'rgba(255,255,255,0.04)' },
+        horzLines: { color: 'rgba(255,255,255,0.04)' },
+      },
+      rightPriceScale: {
+        borderColor: '#1F1B3A',
+        scaleMargins: { top: 0.10, bottom: 0.22 },
+      },
+      timeScale: {
+        borderColor: '#1F1B3A',
+        timeVisible: true,
+        secondsVisible: false,
+        rightOffset: 4,
+      },
+      crosshair: {
+        mode: LightweightCharts.CrosshairMode.Normal,
+        vertLine: { color: '#7B5FFF', width: 1, style: LightweightCharts.LineStyle.Dashed,
+                    labelBackgroundColor: '#7B5FFF' },
+        horzLine: { color: '#7B5FFF', width: 1, style: LightweightCharts.LineStyle.Dashed,
+                    labelBackgroundColor: '#7B5FFF' },
+      },
+      handleScale:  { mouseWheel: true, pinch: true,
+                      axisPressedMouseMove: { time: true, price: false } },
+      handleScroll: { mouseWheel: true, pressedMouseMove: true,
+                      horzTouchDrag: true, vertTouchDrag: false },
+      autoSize: true,
+    });
+
+    var mainSeries     = null;
+    var volumeSeries   = null;
+    var overlaySeries  = {};     // name -> ISeriesApi
+    var lastData       = [];     // last data set on mainSeries (for hover delta)
+    var chartKind      = 'area';
+
+    function makeMain(kind) {
+      if (mainSeries) {
+        try { chart.removeSeries(mainSeries); } catch (e) {}
+        mainSeries = null;
+      }
+      chartKind = kind;
+      if (kind === 'candle') {
+        mainSeries = chart.addCandlestickSeries({
+          upColor:        '#1EBF7A',
+          downColor:      '#E04A3F',
+          wickUpColor:    '#1EBF7A',
+          wickDownColor:  '#E04A3F',
+          borderVisible:  false,
+          priceFormat:    { type: 'price', precision: 2, minMove: 0.01 },
+        });
+      } else if (kind === 'line') {
+        mainSeries = chart.addLineSeries({
+          color: '#7B5FFF', lineWidth: 2, priceLineVisible: false,
+          priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+        });
+      } else {
+        mainSeries = chart.addAreaSeries({
+          lineColor:   '#7B5FFF',
+          topColor:    'rgba(123,95,255,0.32)',
+          bottomColor: 'rgba(123,95,255,0.00)',
+          lineWidth:   2,
+          priceLineVisible: false,
+          priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+        });
+      }
+    }
+    makeMain('area');
+
+    function ensureVolume(enabled) {
+      if (enabled && !volumeSeries) {
+        volumeSeries = chart.addHistogramSeries({
+          color: 'rgba(123,95,255,0.35)',
+          priceFormat: { type: 'volume' },
+          priceScaleId: '',
+          scaleMargins: { top: 0.80, bottom: 0.00 },
+        });
+      } else if (!enabled && volumeSeries) {
+        try { chart.removeSeries(volumeSeries); } catch (e) {}
+        volumeSeries = null;
+      }
+    }
+
+    // ── OHLC strip ─────────────────────────────────────────
+    var ohlcEl = document.getElementById('ohlc');
+    chart.subscribeCrosshairMove(function (param) {
+      if (!param.time || !param.seriesData || !param.seriesData.size) {
+        ohlcEl.style.display = 'none';
+        post({ type: 'cross_clear' });
+        return;
+      }
+      var d = param.seriesData.get(mainSeries);
+      if (!d) { ohlcEl.style.display = 'none'; return; }
+
+      var html, payload;
+      if (d.open !== undefined) {
+        var up  = d.close >= d.open;
+        var cls = up ? 'up' : 'dn';
+        html = '<span class="lbl">O</span><span class="' + cls + '">' + d.open.toFixed(2) + '</span>  ' +
+               '<span class="lbl">H</span><span class="' + cls + '">' + d.high.toFixed(2) + '</span>  ' +
+               '<span class="lbl">L</span><span class="' + cls + '">' + d.low.toFixed(2)  + '</span>  ' +
+               '<span class="lbl">C</span><span class="' + cls + '">' + d.close.toFixed(2)+ '</span>';
+        payload = { type:'cross', t: param.time, o: d.open, h: d.high, l: d.low, c: d.close };
+      } else {
+        html = '<span class="lbl">₹</span><span class="up">' + d.value.toFixed(2) + '</span>';
+        payload = { type:'cross', t: param.time, c: d.value };
+      }
+      if (volumeSeries) {
+        var v = param.seriesData.get(volumeSeries);
+        if (v && v.value !== undefined) {
+          html += '  <span class="lbl">Vol</span><span class="vol">' + fmtVol(v.value) + '</span>';
+          payload.v = v.value;
+        }
+      }
+      ohlcEl.innerHTML = html;
+      ohlcEl.style.display = 'block';
+      post(payload);
+    });
+
+    function fmtVol(v) {
+      if (v >= 1e7) return (v / 1e7).toFixed(2) + 'Cr';
+      if (v >= 1e5) return (v / 1e5).toFixed(2) + 'L';
+      if (v >= 1e3) return (v / 1e3).toFixed(1) + 'K';
+      return Math.round(v).toString();
+    }
+
+    // ── Message handler from Flutter ───────────────────────
+    function handle(msg) {
+      try {
+        if (msg.type === 'data') {
+          lastData = msg.bars || [];
+          if (chartKind === 'candle') {
+            mainSeries.setData(lastData);
+          } else {
+            // Area / line use {time, value}
+            mainSeries.setData(lastData.map(function (b) {
+              return { time: b.time, value: b.close !== undefined ? b.close : b.value };
+            }));
+          }
+          if (msg.volume && volumeSeries) {
+            volumeSeries.setData(msg.volume);
+          } else if (!msg.volume && volumeSeries) {
+            volumeSeries.setData([]);
+          }
+          chart.timeScale().fitContent();
+          post({ type:'data_loaded', n: lastData.length });
+        } else if (msg.type === 'kind') {
+          makeMain(msg.kind);
+          // Re-feed the data into the new series so it renders immediately
+          if (lastData && lastData.length) {
+            if (msg.kind === 'candle') {
+              mainSeries.setData(lastData);
+            } else {
+              mainSeries.setData(lastData.map(function (b) {
+                return { time: b.time, value: b.close !== undefined ? b.close : b.value };
+              }));
+            }
+            chart.timeScale().fitContent();
+          }
+        } else if (msg.type === 'volume') {
+          ensureVolume(!!msg.enabled);
+        } else if (msg.type === 'overlay') {
+          var name = msg.name;
+          if (overlaySeries[name]) {
+            try { chart.removeSeries(overlaySeries[name]); } catch (e) {}
+            delete overlaySeries[name];
+          }
+          if (msg.data && msg.data.length) {
+            var s = chart.addLineSeries({
+              color: msg.color || '#E8A422',
+              lineWidth: msg.width || 1.4,
+              priceLineVisible: false,
+              lastValueVisible: false,
+              crosshairMarkerVisible: false,
+            });
+            s.setData(msg.data);
+            overlaySeries[name] = s;
+          }
+        } else if (msg.type === 'clear_overlays') {
+          for (var k in overlaySeries) {
+            try { chart.removeSeries(overlaySeries[k]); } catch (e) {}
+          }
+          overlaySeries = {};
+        } else if (msg.type === 'fit') {
+          chart.timeScale().fitContent();
+        }
+      } catch (e) {
+        post({ type:'js_error', msg: String(e && e.message || e) });
+      }
+    }
+
+    window.__chartHandle = handle;
+    post({ type: 'ready' });
+  });
+})();
+</script>
+</body>
+</html>

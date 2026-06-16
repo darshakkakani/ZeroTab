@@ -1,27 +1,40 @@
 // ignore_for_file: use_build_context_synchronously
 //
-// Holding Chart Screen — TradingView/Dhan-style price chart for a single
-// holding (stock, ETF, MF, commodity). Uses free public APIs:
-//   • Stocks/ETFs: Yahoo Finance v8 chart endpoint (SYMBOL.NS for NSE,
-//     SYMBOL.BO for BSE). Returns OHLCV time series.
-//   • Mutual funds: api.mfapi.in/mf/<scheme_code> — daily NAV history.
+// Holding Chart Screen — TradingView-grade price chart for a single holding
+// (stock / ETF / MF / commodity). The chart itself is the open-source
+// TradingView Lightweight Charts library (Apache 2.0) loaded inside a
+// WebView; ZeroTab feeds it OHLCV bars + indicator overlays computed in
+// pure Dart.
 //
-// Chart renders via fl_chart's LineChart with a gradient area fill and a
-// long-press crosshair (same UX pattern Dhan and Groww use as their default
-// view). Timeframe buttons (1D / 1W / 1M / 3M / 1Y / MAX) re-fetch as
-// needed; results are cached in-memory for the screen lifetime.
+// Data sources (free, no auth):
+//   • Stocks / ETFs / Commodities → Yahoo Finance v8 chart (~15-min delayed
+//     on Indian listings per SEBI rules).
+//   • Mutual funds → api.mfapi.in (daily NAVs).
+//
+// User-visible features:
+//   • Timeframes: 1D / 5D / 1M / 3M / 6M / 1Y / 5Y / All  (intraday TFs
+//     hidden for MFs since NAVs are daily-only).
+//   • Chart type: Area · Candlestick · Line.
+//   • Indicators: MA20 · MA50 · EMA9  (toggle chips).
+//   • Volume sub-panel for stocks / ETFs.
+//   • Crosshair tooltip with OHLC + volume that follows cursor; price &
+//     time axis labels rendered natively by the chart engine.
+//   • Pinch-zoom, two-finger time scroll, fit-to-content.
 
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/models/models.dart';
+import '../services/chart_data_service.dart';
+import '../services/indicators.dart';
 
-enum HoldingKind { stock, mf, etf, commodity }
+// Re-export HoldingKind so callers (investments_screen.dart) keep their
+// existing `import 'holding_chart_screen.dart'` path working.
+export '../services/chart_data_service.dart' show HoldingKind;
 
 class HoldingChartScreen extends StatefulWidget {
   final MFHoldingModel holding;
@@ -36,53 +49,204 @@ class HoldingChartScreen extends StatefulWidget {
   State<HoldingChartScreen> createState() => _HoldingChartScreenState();
 }
 
-class _Range {
-  final String label;
-  final String yfRange;       // Yahoo: 1d/5d/1mo/3mo/1y/max
-  final String yfInterval;    // Yahoo: 1m / 5m / 1d / 1wk
-  final int    mfDays;        // mfapi.in cutoff (days back)
-  const _Range(this.label, this.yfRange, this.yfInterval, this.mfDays);
-}
+enum _ChartKind { area, candle, line }
 
-const _ranges = <_Range>[
-  _Range('1D',  '1d',  '5m',  1),
-  _Range('1W',  '5d',  '15m', 7),
-  _Range('1M',  '1mo', '1d',  30),
-  _Range('3M',  '3mo', '1d',  90),
-  _Range('1Y',  '1y',  '1d',  365),
-  _Range('MAX', 'max', '1wk', 100000),
-];
-
-class _Point {
-  final DateTime t;
+class _CrossInfo {
+  final int      time;
+  final double?  open, high, low, volume;
   final double   close;
-  const _Point(this.t, this.close);
+  const _CrossInfo({
+    required this.time, required this.close,
+    this.open, this.high, this.low, this.volume,
+  });
 }
 
 class _HoldingChartScreenState extends State<HoldingChartScreen> {
-  final Dio _http = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 15),
-    headers: const {
-      // Yahoo refuses empty UAs; a real-looking one keeps it stable.
-      'User-Agent':
-        'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
-        '(KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36',
-      'Accept': 'application/json,text/plain,*/*',
-    },
-  ));
+  final ChartDataService _svc = ChartDataService();
+  late WebViewController _wv;
+  bool _wvReady = false;
+  bool _loading = true;
+  String? _error;
 
-  int _rangeIdx = 2; // default to 1M (matches Dhan default)
-  final Map<int, List<_Point>> _cache = {};   // rangeIdx → series
-  final Map<int, String>       _errors = {};
-  bool _loading = false;
+  late List<ChartTimeframe> _tfs;
+  int _tfIdx = 2;
+  _ChartKind _kind = _ChartKind.area;
 
-  _Point? _crosshair;
+  // Indicator toggles
+  bool _ma20 = false;
+  bool _ma50 = false;
+  bool _ema9 = false;
+
+  bool _showVolume = true;
+
+  List<Candle> _bars = const [];
+  _CrossInfo? _cross;
 
   @override
   void initState() {
     super.initState();
-    _fetch(_rangeIdx);
+    _tfs = widget.kind == HoldingKind.mf
+        ? ChartTimeframes.allForMF
+        : ChartTimeframes.allForStock;
+    // Default landing TF — "1M" for stocks (matches Dhan default),
+    // first item for MFs.
+    if (widget.kind != HoldingKind.mf) {
+      _tfIdx = _tfs.indexOf(ChartTimeframes.day1m).clamp(0, _tfs.length - 1);
+    } else {
+      _tfIdx = 0;
+    }
+    _showVolume = widget.kind != HoldingKind.mf;
+    _initWebView();
+  }
+
+  void _initWebView() {
+    _wv = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(const Color(0xFF0A0820))
+      ..addJavaScriptChannel('FlutterChart', onMessageReceived: _onJsMessage)
+      ..setNavigationDelegate(NavigationDelegate(
+        onWebResourceError: (e) {
+          if (mounted) setState(() => _error = 'Chart engine failed: ${e.description}');
+        },
+      ))
+      ..loadFlutterAsset('assets/charts/tradingview_chart.html');
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  //  JS bridge — Flutter → JS uses runJavaScript, JS → Flutter uses
+  //  the FlutterChart channel (set up above). Messages on either
+  //  side are JSON strings.
+  // ─────────────────────────────────────────────────────────────
+  void _onJsMessage(JavaScriptMessage m) {
+    try {
+      final msg = jsonDecode(m.message) as Map<String, dynamic>;
+      switch (msg['type']) {
+        case 'ready':
+          _wvReady = true;
+          _fetchAndRender();
+          break;
+        case 'cross':
+          setState(() => _cross = _CrossInfo(
+                time:  (msg['t'] as num).toInt(),
+                close: (msg['c'] as num).toDouble(),
+                open:  (msg['o'] as num?)?.toDouble(),
+                high:  (msg['h'] as num?)?.toDouble(),
+                low:   (msg['l'] as num?)?.toDouble(),
+                volume:(msg['v'] as num?)?.toDouble(),
+              ));
+          break;
+        case 'cross_clear':
+          if (_cross != null) setState(() => _cross = null);
+          break;
+        case 'data_loaded':
+          // no-op, useful for debugging
+          break;
+        case 'js_error':
+          debugPrint('[chart js] ${msg['msg']}');
+          break;
+      }
+    } catch (e) {
+      debugPrint('chart channel parse: $e');
+    }
+  }
+
+  Future<void> _post(Map<String, dynamic> payload) async {
+    if (!_wvReady) return;
+    final js = jsonEncode(payload);
+    await _wv.runJavaScript('window.__chartHandle && window.__chartHandle($js);');
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  //  Data load + push into JS
+  // ─────────────────────────────────────────────────────────────
+  Future<void> _fetchAndRender() async {
+    final tf = _tfs[_tfIdx];
+    setState(() { _loading = true; _error = null; _cross = null; });
+    try {
+      List<Candle> bars;
+      if (widget.kind == HoldingKind.mf) {
+        bars = await _svc.fetchMF(
+          schemeCode: widget.holding.schemeCode ?? '', tf: tf);
+      } else {
+        final ticker = _svc.yahooTicker(
+          kind: widget.kind,
+          symbol: _symbolOrCode,
+          exchange: widget.kind == HoldingKind.stock
+              ? widget.holding.stockExchange : 'NSE',
+        );
+        bars = await _svc.fetchYahoo(ticker: ticker, tf: tf);
+      }
+      _bars = bars;
+
+      // Bars
+      final candleJson = bars.map((b) => b.toCandleJson()).toList();
+      final volumeJson = _showVolume && widget.kind != HoldingKind.mf
+          ? List<Map<String, dynamic>>.generate(bars.length, (i) {
+              final up = i == 0
+                  ? bars[i].close >= bars[i].open
+                  : bars[i].close >= bars[i - 1].close;
+              return bars[i].toVolumeJson(up);
+            })
+          : null;
+      await _post({
+        'type': 'volume',
+        'enabled': volumeJson != null,
+      });
+      await _post({
+        'type': 'data',
+        'bars': candleJson,
+        if (volumeJson != null) 'volume': volumeJson,
+      });
+
+      // Chart kind
+      await _post({
+        'type': 'kind',
+        'kind': _kind == _ChartKind.candle
+            ? 'candle' : _kind == _ChartKind.line ? 'line' : 'area',
+      });
+
+      // Re-apply indicator overlays
+      await _post({'type': 'clear_overlays'});
+      if (_ma20) {
+        await _post({
+          'type': 'overlay', 'name': 'ma20', 'color': '#E8A422', 'width': 1.4,
+          'data': Indicators.sma(bars, 20).map((p) => p.toJson()).toList(),
+        });
+      }
+      if (_ma50) {
+        await _post({
+          'type': 'overlay', 'name': 'ma50', 'color': '#00C4A8', 'width': 1.4,
+          'data': Indicators.sma(bars, 50).map((p) => p.toJson()).toList(),
+        });
+      }
+      if (_ema9) {
+        await _post({
+          'type': 'overlay', 'name': 'ema9', 'color': '#7B5FFF', 'width': 1.4,
+          'data': Indicators.ema(bars, 9).map((p) => p.toJson()).toList(),
+        });
+      }
+
+      if (mounted) setState(() => _loading = false);
+    } catch (e) {
+      if (mounted) setState(() {
+        _loading = false;
+        _error = _friendly(e.toString());
+      });
+    }
+  }
+
+  String _friendly(String e) {
+    if (e.contains('SocketException') || e.contains('connection')) {
+      return 'No internet connection';
+    }
+    if (e.contains('Timeout')) return 'Network is slow — please retry';
+    if (e.contains('404') || e.contains('No data') || e.contains('No bars')) {
+      return 'No price history available for this symbol';
+    }
+    if (e.contains('No NAV') || e.contains('NAV history')) {
+      return 'No NAV history found for this scheme';
+    }
+    return 'Unable to load chart data';
   }
 
   String get _symbolOrCode {
@@ -94,488 +258,366 @@ class _HoldingChartScreenState extends State<HoldingChartScreen> {
     }
   }
 
-  String _yfTicker() {
-    final s = _symbolOrCode.toUpperCase();
-    if (s.contains('.')) return s; // already qualified
-    if (widget.kind == HoldingKind.commodity) {
-      // Map common MCX symbols to Yahoo's futures (best-effort).
-      const map = {
-        'GOLD': 'GC=F', 'GOLDPETAL': 'GC=F',
-        'SILVER': 'SI=F', 'CRUDEOIL': 'CL=F',
-        'NATURALGAS': 'NG=F', 'COPPER': 'HG=F',
-      };
-      return map[s] ?? s;
-    }
-    // Default Indian listing: NSE (.NS). Exchange field may override.
-    final exch = (widget.holding.stockExchange).toUpperCase();
-    if (exch == 'BSE') return '$s.BO';
-    return '$s.NS';
-  }
-
-  Future<void> _fetch(int rangeIdx) async {
-    if (_cache.containsKey(rangeIdx)) {
-      setState(() { _rangeIdx = rangeIdx; _crosshair = null; });
-      return;
-    }
-    setState(() {
-      _rangeIdx = rangeIdx;
-      _loading = true;
-      _errors.remove(rangeIdx);
-      _crosshair = null;
-    });
-    try {
-      final pts = widget.kind == HoldingKind.mf
-          ? await _fetchMF(_ranges[rangeIdx])
-          : await _fetchYahoo(_ranges[rangeIdx]);
-      _cache[rangeIdx] = pts;
-    } catch (e) {
-      _errors[rangeIdx] = e.toString();
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<List<_Point>> _fetchYahoo(_Range r) async {
-    final t = _yfTicker();
-    if (t.isEmpty) throw 'no symbol';
-    final url = 'https://query1.finance.yahoo.com/v8/finance/chart/$t'
-        '?range=${r.yfRange}&interval=${r.yfInterval}';
-    final resp = await _http.get<dynamic>(url);
-    final data = resp.data is String
-        ? jsonDecode(resp.data as String)
-        : resp.data;
-    final result = (data['chart']?['result'] as List?)?.first;
-    if (result == null) throw 'no data';
-    final ts     = (result['timestamp'] as List?) ?? const [];
-    final closes = (((result['indicators']?['quote'] as List?)?.first
-        as Map<String, dynamic>?)?['close'] as List?) ?? const [];
-    final out = <_Point>[];
-    for (int i = 0; i < ts.length && i < closes.length; i++) {
-      final c = closes[i];
-      if (c == null) continue;
-      out.add(_Point(
-        DateTime.fromMillisecondsSinceEpoch((ts[i] as int) * 1000),
-        (c as num).toDouble(),
-      ));
-    }
-    if (out.isEmpty) throw 'empty series';
-    return out;
-  }
-
-  Future<List<_Point>> _fetchMF(_Range r) async {
-    final code = _symbolOrCode;
-    if (code.isEmpty) throw 'no scheme code';
-    final resp = await _http.get<dynamic>('https://api.mfapi.in/mf/$code');
-    final data = resp.data is String
-        ? jsonDecode(resp.data as String)
-        : resp.data;
-    final list = (data['data'] as List?) ?? const [];
-    final cutoff = DateTime.now().subtract(Duration(days: r.mfDays));
-    final fmt = DateFormat('dd-MM-yyyy');
-    final out = <_Point>[];
-    for (final row in list) {
-      final m = row as Map<String, dynamic>;
-      final d = m['date'] as String?;
-      final n = m['nav']  as String?;
-      if (d == null || n == null) continue;
-      final dt = fmt.parse(d);
-      if (dt.isBefore(cutoff)) continue;
-      final nav = double.tryParse(n);
-      if (nav == null) continue;
-      out.add(_Point(dt, nav));
-    }
-    if (out.isEmpty) throw 'no NAV history';
-    // mfapi.in returns newest-first; chart needs ascending.
-    out.sort((a, b) => a.t.compareTo(b.t));
-    return out;
-  }
-
-  // ─── UI ─────────────────────────────────────────────────────────
-
   String get _title {
     final s = widget.holding.schemeName;
     if (s != null && s.isNotEmpty) return s;
     return _symbolOrCode;
   }
 
-  Color get _accent {
-    switch (widget.kind) {
-      case HoldingKind.stock:     return AppColors.accent;
-      case HoldingKind.mf:        return AppColors.teal;
-      case HoldingKind.etf:       return AppColors.dataETF;
-      case HoldingKind.commodity: return AppColors.gold;
-    }
-  }
-
+  // ─────────────────────────────────────────────────────────────
+  //  Build
+  // ─────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final pts = _cache[_rangeIdx];
-    final err = _errors[_rangeIdx];
-
-    final last  = pts != null && pts.isNotEmpty ? pts.last.close : null;
-    final first = pts != null && pts.isNotEmpty ? pts.first.close : null;
-    final pctChange = (first != null && first != 0 && last != null)
-        ? ((last - first) / first) * 100
-        : null;
-    final priceChange = (first != null && last != null) ? last - first : null;
-    final up = (pctChange ?? 0) >= 0;
+    final ltp        = _cross?.close
+        ?? (_bars.isNotEmpty ? _bars.last.close : widget.holding.stockCurrentPrice);
+    final firstClose = _bars.isNotEmpty ? _bars.first.close : null;
+    final lastClose  = _bars.isNotEmpty ? _bars.last.close  : null;
+    final tfChange   = (firstClose != null && lastClose != null && firstClose != 0)
+        ? ((lastClose - firstClose) / firstClose) * 100 : null;
+    final tfDelta    = (firstClose != null && lastClose != null)
+        ? lastClose - firstClose : null;
+    final up         = (tfChange ?? 0) >= 0;
     final changeColor = up ? AppColors.green : AppColors.red;
-
-    final ltp  = _crosshair?.close ?? last ?? widget.holding.stockCurrentPrice;
-    final ltpT = _crosshair?.t;
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: SafeArea(
-        child: Column(children: [
-          // ─ Top bar ─
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 14, 4),
-            child: Row(children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_rounded,
-                    color: AppColors.text, size: 22),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-              Expanded(child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_title, style: const TextStyle(
-                    fontFamily: 'DMSans', fontSize: 15,
-                    fontWeight: FontWeight.w700, color: AppColors.text),
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                  Text(_symbolOrCode + (widget.kind == HoldingKind.stock
-                      ? '  ·  ${widget.holding.stockExchange}' : ''),
-                    style: const TextStyle(fontFamily: 'DMMono',
-                      fontSize: 10.5, color: AppColors.text3),
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                ],
-              )),
-              IconButton(
-                icon: const Icon(Icons.refresh_rounded,
-                    color: AppColors.text2, size: 19),
-                onPressed: _loading ? null : () {
-                  _cache.remove(_rangeIdx);
-                  _fetch(_rangeIdx);
-                },
-              ),
-            ]),
-          ),
-
-          // ─ Price + change ─
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Expanded(child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '₹${ltp.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      fontFamily: 'DMMono', fontSize: 30,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -1, height: 1.0,
-                      color: AppColors.text,
-                      fontFeatures: [
-                        FontFeature.tabularFigures(),
-                        FontFeature.liningFigures(),
-                      ]),
-                  ),
-                  const SizedBox(height: 6),
-                  if (pctChange != null)
-                    Row(children: [
-                      Icon(up ? Icons.arrow_upward_rounded
-                          : Icons.arrow_downward_rounded,
-                        color: changeColor, size: 13),
-                      const SizedBox(width: 2),
-                      Text(
-                        '${priceChange! >= 0 ? "+" : ""}${priceChange.toStringAsFixed(2)}  '
-                        '(${pctChange >= 0 ? "+" : ""}${pctChange.toStringAsFixed(2)}%)',
-                        style: TextStyle(fontFamily: 'DMMono', fontSize: 12,
-                          fontWeight: FontWeight.w600, color: changeColor)),
-                      const SizedBox(width: 6),
-                      Text(_ranges[_rangeIdx].label,
-                        style: const TextStyle(fontFamily: 'DMSans',
-                          fontSize: 10.5, color: AppColors.text3)),
-                    ]),
-                ],
-              )),
-              if (ltpT != null)
-                Text(DateFormat('d MMM, HH:mm').format(ltpT),
-                  style: const TextStyle(fontFamily: 'DMSans',
-                    fontSize: 10.5, color: AppColors.text3)),
-            ]),
-          ),
-
-          // ─ Chart area ─
-          Expanded(child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 4, 14, 6),
-            child: _buildChart(pts, err),
-          )),
-
-          // ─ Timeframe selector ─
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
-            child: Row(children: [
-              for (int i = 0; i < _ranges.length; i++)
-                Expanded(child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: _RangeButton(
-                    label: _ranges[i].label,
-                    active: i == _rangeIdx,
-                    accent: _accent,
-                    onTap: () => _fetch(i),
-                  ),
-                )),
-            ]),
-          ),
-
-          // ─ Holding summary ─
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
-            child: _HoldingSummary(holding: widget.holding, kind: widget.kind),
-          ),
-        ]),
-      ),
-    );
-  }
-
-  Widget _buildChart(List<_Point>? pts, String? err) {
-    if (_loading && pts == null) {
-      return const Center(
-        child: CircularProgressIndicator(
-          color: AppColors.accent, strokeWidth: 1.5));
-    }
-    if (err != null && pts == null) {
-      return Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.signal_cellular_nodata_rounded,
-              color: AppColors.text3, size: 28),
-          const SizedBox(height: 10),
-          const Text('Chart data unavailable',
-            style: TextStyle(fontFamily: 'DMSans', fontSize: 13,
-              fontWeight: FontWeight.w600, color: AppColors.text)),
-          const SizedBox(height: 4),
-          Text(_friendlyErr(err),
-            style: const TextStyle(fontFamily: 'DMSans', fontSize: 11,
-              color: AppColors.text3), textAlign: TextAlign.center),
-          const SizedBox(height: 10),
-          OutlinedButton(
-            onPressed: () => _fetch(_rangeIdx),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.accent,
-              side: const BorderSide(color: AppColors.border)),
-            child: const Text('Retry')),
-        ]),
-      );
-    }
-    if (pts == null || pts.length < 2) {
-      return const Center(child: Text('Not enough data points',
-        style: TextStyle(fontFamily: 'DMSans', fontSize: 12,
-          color: AppColors.text3)));
-    }
-
-    final spots = <FlSpot>[
-      for (int i = 0; i < pts.length; i++)
-        FlSpot(i.toDouble(), pts[i].close),
-    ];
-    double minY = spots.first.y, maxY = spots.first.y;
-    for (final s in spots) {
-      if (s.y < minY) minY = s.y;
-      if (s.y > maxY) maxY = s.y;
-    }
-    final pad = (maxY - minY) * 0.08;
-    if (pad == 0) { minY -= 1; maxY += 1; } else { minY -= pad; maxY += pad; }
-
-    final up = pts.last.close >= pts.first.close;
-    final lineColor = up ? AppColors.green : AppColors.red;
-
-    return LineChart(
-      LineChartData(
-        minY: minY, maxY: maxY,
-        minX: 0, maxX: (pts.length - 1).toDouble(),
-        gridData: const FlGridData(show: false),
-        titlesData: const FlTitlesData(show: false),
-        borderData: FlBorderData(show: false),
-        lineBarsData: [
-          LineChartBarData(
-            spots: spots,
-            isCurved: false,
-            color: lineColor,
-            barWidth: 1.8,
-            isStrokeCapRound: true,
-            dotData: const FlDotData(show: false),
-            belowBarData: BarAreaData(
-              show: true,
-              gradient: LinearGradient(
-                begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                colors: [
-                  lineColor.withOpacity(0.28),
-                  lineColor.withOpacity(0.00),
-                ],
-              ),
+      body: SafeArea(child: Column(children: [
+        _topBar(),
+        _priceBlock(ltp: ltp, tfChange: tfChange, tfDelta: tfDelta, up: up,
+            changeColor: changeColor),
+        _toolStrip(),
+        Expanded(child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Stack(children: [
+            // Translucent loading veil over the WebView, so the chart
+            // surface stays mounted during re-fetches (no flicker).
+            WebViewWidget(controller: _wv),
+            if (_loading) Container(
+              color: AppColors.bg.withValues(alpha: 0.55),
+              alignment: Alignment.center,
+              child: const SizedBox(width: 22, height: 22,
+                child: CircularProgressIndicator(
+                  color: AppColors.accent, strokeWidth: 1.6)),
             ),
-          ),
-        ],
-        lineTouchData: LineTouchData(
-          enabled: true,
-          handleBuiltInTouches: true,
-          touchTooltipData: LineTouchTooltipData(
-            getTooltipColor: (_) => AppColors.bg2,
-            tooltipBorder: const BorderSide(color: AppColors.border),
-            tooltipPadding: const EdgeInsets.symmetric(
-                horizontal: 10, vertical: 6),
-            getTooltipItems: (items) => items.map((it) {
-              final i = it.x.toInt().clamp(0, pts.length - 1);
-              final p = pts[i];
-              return LineTooltipItem(
-                '₹${p.close.toStringAsFixed(2)}\n${DateFormat('d MMM yyyy').format(p.t)}',
-                const TextStyle(
-                  fontFamily: 'DMMono', fontSize: 11,
-                  fontWeight: FontWeight.w600, color: AppColors.text),
-              );
-            }).toList(),
-          ),
-          getTouchedSpotIndicator: (_, indicators) => indicators.map((_) =>
-            TouchedSpotIndicatorData(
-              FlLine(color: lineColor.withOpacity(0.5), strokeWidth: 1,
-                  dashArray: [4, 4]),
-              FlDotData(show: true, getDotPainter: (s, _, __, ___) =>
-                FlDotCirclePainter(radius: 3.5,
-                  color: lineColor,
-                  strokeWidth: 2, strokeColor: AppColors.bg)),
-            )).toList(),
-          touchCallback: (event, response) {
-            if (!event.isInterestedForInteractions ||
-                response == null || response.lineBarSpots == null ||
-                response.lineBarSpots!.isEmpty) {
-              if (_crosshair != null) {
-                setState(() => _crosshair = null);
-              }
-              return;
-            }
-            final i = response.lineBarSpots!.first.x.toInt()
-                .clamp(0, pts.length - 1);
-            setState(() => _crosshair = pts[i]);
-          },
-        ),
-      ),
-      duration: const Duration(milliseconds: 250),
+            if (_error != null) Container(
+              color: AppColors.bg,
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              alignment: Alignment.center,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.signal_cellular_nodata_rounded,
+                    color: AppColors.text3, size: 28),
+                const SizedBox(height: 10),
+                Text(_error!, textAlign: TextAlign.center,
+                  style: const TextStyle(fontFamily: 'DMSans', fontSize: 12.5,
+                      color: AppColors.text2)),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: _fetchAndRender,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.accent,
+                    side: const BorderSide(color: AppColors.border)),
+                  child: const Text('Retry'),
+                ),
+              ]),
+            ),
+          ]),
+        )),
+        _timeframeBar(),
+        _summaryCard(),
+      ])),
     );
   }
 
-  String _friendlyErr(String e) {
-    if (e.contains('SocketException') || e.contains('connection')) {
-      return 'No internet connection';
-    }
-    if (e.contains('404') || e.contains('no data') || e.contains('empty')) {
-      return 'No history found for this symbol';
-    }
-    if (e.contains('Timeout') || e.contains('timeout')) {
-      return 'Network is slow — try again';
-    }
-    return 'Try again in a moment';
-  }
-}
-
-class _RangeButton extends StatelessWidget {
-  final String label;
-  final bool   active;
-  final Color  accent;
-  final VoidCallback onTap;
-  const _RangeButton({
-    required this.label, required this.active,
-    required this.accent, required this.onTap,
-  });
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 140),
-      height: 30,
-      decoration: BoxDecoration(
-        color: active ? accent.withOpacity(0.18) : AppColors.bg3,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-            color: active ? accent.withOpacity(0.55) : AppColors.border),
+  Widget _topBar() => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 4, 12, 0),
+    child: Row(children: [
+      IconButton(
+        icon: const Icon(Icons.arrow_back_rounded,
+            color: AppColors.text, size: 22),
+        onPressed: () => Navigator.of(context).pop(),
       ),
-      alignment: Alignment.center,
-      child: Text(label, style: TextStyle(
-        fontFamily: 'DMSans', fontSize: 11,
-        fontWeight: FontWeight.w700,
-        color: active ? accent : AppColors.text2)),
+      Expanded(child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(_title, style: const TextStyle(
+            fontFamily: 'DMSans', fontSize: 14.5,
+            fontWeight: FontWeight.w700, color: AppColors.text),
+            maxLines: 1, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 1),
+          Row(children: [
+            Text(_symbolOrCode, style: const TextStyle(
+              fontFamily: 'DMMono', fontSize: 10.5, color: AppColors.text3)),
+            if (widget.kind == HoldingKind.stock) ...[
+              const Text('  ·  ', style: TextStyle(
+                fontFamily: 'DMSans', color: AppColors.text3, fontSize: 10.5)),
+              Text(widget.holding.stockExchange, style: const TextStyle(
+                fontFamily: 'DMSans', fontSize: 10.5,
+                fontWeight: FontWeight.w600, color: AppColors.text3)),
+            ],
+            const Text('  ·  ', style: TextStyle(
+              fontFamily: 'DMSans', color: AppColors.text3, fontSize: 10.5)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: AppColors.gold.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: AppColors.gold.withValues(alpha: 0.25))),
+              child: Text(
+                widget.kind == HoldingKind.mf ? 'NAV (EOD)' : 'Delayed 15 min',
+                style: const TextStyle(fontFamily: 'DMSans', fontSize: 8.5,
+                    fontWeight: FontWeight.w700, color: AppColors.gold,
+                    letterSpacing: 0.3)),
+            ),
+          ]),
+        ],
+      )),
+      IconButton(
+        tooltip: 'Refresh',
+        icon: const Icon(Icons.refresh_rounded,
+            color: AppColors.text2, size: 19),
+        onPressed: _loading ? null : _fetchAndRender,
+      ),
+    ]),
+  );
+
+  Widget _priceBlock({
+    required double  ltp,
+    required double? tfChange,
+    required double? tfDelta,
+    required bool    up,
+    required Color   changeColor,
+  }) {
+    final tfLabel = _tfs[_tfIdx].label;
+    final crossDate = _cross != null
+        ? DateTime.fromMillisecondsSinceEpoch(_cross!.time * 1000, isUtc: false)
+        : null;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('₹${ltp.toStringAsFixed(2)}', style: const TextStyle(
+              fontFamily: 'DMMono', fontSize: 32, height: 1.0,
+              fontWeight: FontWeight.w700, letterSpacing: -1.2,
+              color: AppColors.text,
+              fontFeatures: [
+                FontFeature.tabularFigures(),
+                FontFeature.liningFigures(),
+              ])),
+            const SizedBox(height: 6),
+            if (tfChange != null && tfDelta != null) Row(children: [
+              Icon(up ? Icons.arrow_upward_rounded
+                  : Icons.arrow_downward_rounded,
+                color: changeColor, size: 13),
+              const SizedBox(width: 2),
+              Text(
+                '${tfDelta >= 0 ? "+" : ""}${tfDelta.toStringAsFixed(2)}  '
+                '(${tfChange >= 0 ? "+" : ""}${tfChange.toStringAsFixed(2)}%)',
+                style: TextStyle(fontFamily: 'DMMono', fontSize: 12,
+                  fontWeight: FontWeight.w600, color: changeColor)),
+              const SizedBox(width: 6),
+              Text(tfLabel, style: const TextStyle(fontFamily: 'DMSans',
+                  fontSize: 10.5, color: AppColors.text3)),
+            ]),
+          ],
+        )),
+        if (crossDate != null) Text(
+          DateFormat('d MMM, HH:mm').format(crossDate),
+          style: const TextStyle(fontFamily: 'DMMono', fontSize: 10.5,
+              color: AppColors.text3)),
+      ]),
+    );
+  }
+
+  // ── Chart type + indicators row ─────────────────────────────────
+  Widget _toolStrip() => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+    child: SizedBox(height: 30,
+      child: ListView(scrollDirection: Axis.horizontal, children: [
+        _kindChip(_ChartKind.area,   'Area',   Icons.show_chart_rounded),
+        _kindChip(_ChartKind.candle, 'Candle', Icons.candlestick_chart_rounded),
+        _kindChip(_ChartKind.line,   'Line',   Icons.timeline_rounded),
+        const SizedBox(width: 10),
+        Container(width: 1, height: 18, color: AppColors.border2,
+            margin: const EdgeInsets.symmetric(vertical: 6)),
+        const SizedBox(width: 10),
+        _indChip('MA 20', _ma20, AppColors.gold, () {
+          setState(() => _ma20 = !_ma20); _fetchAndRender();
+        }),
+        _indChip('MA 50', _ma50, AppColors.teal, () {
+          setState(() => _ma50 = !_ma50); _fetchAndRender();
+        }),
+        _indChip('EMA 9', _ema9, AppColors.accent, () {
+          setState(() => _ema9 = !_ema9); _fetchAndRender();
+        }),
+        if (widget.kind != HoldingKind.mf)
+          _indChip('Volume', _showVolume, AppColors.accent2, () {
+            setState(() => _showVolume = !_showVolume); _fetchAndRender();
+          }),
+      ]),
     ),
   );
-}
 
-class _HoldingSummary extends StatelessWidget {
-  final MFHoldingModel holding;
-  final HoldingKind kind;
-  const _HoldingSummary({required this.holding, required this.kind});
-
-  @override
-  Widget build(BuildContext context) {
-    final qty   = kind == HoldingKind.stock
-        ? holding.stockQty : (holding.units ?? 0);
-    final avg   = holding.avgNav ?? 0;
-    final inv   = holding.investedAmount ?? 0;
-    final cur   = holding.currentValue   ?? 0;
-    final gain  = holding.gainLoss;
-    final gPct  = holding.gainLossPct;
-    final up    = gain >= 0;
-    final color = up ? AppColors.green : AppColors.red;
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.bg2,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+  Widget _kindChip(_ChartKind k, String label, IconData icon) {
+    final active = k == _kind;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: GestureDetector(
+        onTap: () async {
+          if (k == _kind) return;
+          setState(() => _kind = k);
+          await _post({
+            'type': 'kind',
+            'kind': k == _ChartKind.candle
+                ? 'candle' : k == _ChartKind.line ? 'line' : 'area',
+          });
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 130),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: active ? AppColors.accent.withValues(alpha: 0.18) : AppColors.bg2,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: active ? AppColors.accent.withValues(alpha: 0.55) : AppColors.border)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 13,
+              color: active ? AppColors.accent : AppColors.text3),
+            const SizedBox(width: 5),
+            Text(label, style: TextStyle(fontFamily: 'DMSans',
+              fontSize: 11, fontWeight: FontWeight.w600,
+              color: active ? AppColors.accent : AppColors.text2)),
+          ]),
+        ),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          _kv('Qty', qty == qty.roundToDouble()
-              ? qty.toStringAsFixed(0) : qty.toStringAsFixed(3)),
-          _kv('Avg', '₹${avg.toStringAsFixed(2)}'),
-          _kv('Invested', formatInr(inv, compact: true)),
-        ]),
-        const SizedBox(height: 12),
-        Container(height: 1, color: AppColors.border),
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Current value', style: TextStyle(
-                fontFamily: 'DMSans', fontSize: 10.5,
-                color: AppColors.text3)),
-              const SizedBox(height: 3),
-              Text(formatInr(cur, compact: false),
-                style: const TextStyle(fontFamily: 'DMMono', fontSize: 17,
-                  fontWeight: FontWeight.w700, color: AppColors.text,
-                  fontFeatures: [
-                    FontFeature.tabularFigures(),
-                    FontFeature.liningFigures(),
-                  ])),
-            ])),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            const Text('P&L', style: TextStyle(
-              fontFamily: 'DMSans', fontSize: 10.5,
-              color: AppColors.text3)),
-            const SizedBox(height: 3),
-            Text(
-              '${up ? "+" : "-"}${formatInr(gain.abs(), compact: false)}',
-              style: TextStyle(fontFamily: 'DMMono', fontSize: 16,
-                fontWeight: FontWeight.w700, color: color,
-                fontFeatures: const [
-                  FontFeature.tabularFigures(),
-                  FontFeature.liningFigures(),
-                ])),
-            Text('${up ? "+" : ""}${gPct.toStringAsFixed(2)}%',
-              style: TextStyle(fontFamily: 'DMMono', fontSize: 11,
-                fontWeight: FontWeight.w600, color: color)),
+    );
+  }
+
+  Widget _indChip(String label, bool active, Color accent, VoidCallback onTap) =>
+    Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 130),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: active ? accent.withValues(alpha: 0.18) : AppColors.bg2,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: active ? accent.withValues(alpha: 0.55) : AppColors.border)),
+          child: Text(label, style: TextStyle(fontFamily: 'DMSans',
+            fontSize: 11, fontWeight: FontWeight.w600,
+            color: active ? accent : AppColors.text2)),
+        ),
+      ),
+    );
+
+  // ── Timeframe selector ──────────────────────────────────────────
+  Widget _timeframeBar() => Padding(
+    padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+    child: Row(children: [
+      for (int i = 0; i < _tfs.length; i++)
+        Expanded(child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: GestureDetector(
+            onTap: _loading ? null : () {
+              if (i == _tfIdx) return;
+              setState(() => _tfIdx = i);
+              _fetchAndRender();
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              height: 30,
+              decoration: BoxDecoration(
+                color: i == _tfIdx
+                    ? AppColors.accent.withValues(alpha: 0.20)
+                    : AppColors.bg2,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: i == _tfIdx
+                      ? AppColors.accent.withValues(alpha: 0.55)
+                      : AppColors.border),
+              ),
+              alignment: Alignment.center,
+              child: Text(_tfs[i].label, style: TextStyle(
+                fontFamily: 'DMSans', fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: i == _tfIdx ? AppColors.accent : AppColors.text2,
+              )),
+            ),
+          ),
+        )),
+    ]),
+  );
+
+  // ── Holding summary ─────────────────────────────────────────────
+  Widget _summaryCard() {
+    final h    = widget.holding;
+    final qty  = widget.kind == HoldingKind.stock ? h.stockQty : (h.units ?? 0);
+    final avg  = h.avgNav ?? 0;
+    final inv  = h.investedAmount ?? 0;
+    final cur  = h.currentValue   ?? 0;
+    final gain = h.gainLoss;
+    final gPct = h.gainLossPct;
+    final up   = gain >= 0;
+    final col  = up ? AppColors.green : AppColors.red;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.bg2,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            _kv('Qty', qty == qty.roundToDouble()
+                ? qty.toStringAsFixed(0) : qty.toStringAsFixed(3)),
+            _kv('Avg', '₹${avg.toStringAsFixed(2)}'),
+            _kv('Invested', formatInr(inv, compact: true)),
+          ]),
+          const SizedBox(height: 10),
+          Container(height: 1, color: AppColors.border),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Current value', style: TextStyle(
+                  fontFamily: 'DMSans', fontSize: 10, color: AppColors.text3)),
+                const SizedBox(height: 2),
+                Text(formatInr(cur, compact: false),
+                  style: const TextStyle(fontFamily: 'DMMono', fontSize: 16,
+                    fontWeight: FontWeight.w700, color: AppColors.text,
+                    fontFeatures: [
+                      FontFeature.tabularFigures(),
+                      FontFeature.liningFigures(),
+                    ])),
+              ])),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              const Text('P&L', style: TextStyle(
+                fontFamily: 'DMSans', fontSize: 10, color: AppColors.text3)),
+              const SizedBox(height: 2),
+              Text(
+                '${up ? "+" : "-"}${formatInr(gain.abs(), compact: false)}',
+                style: TextStyle(fontFamily: 'DMMono', fontSize: 15,
+                    fontWeight: FontWeight.w700, color: col,
+                    fontFeatures: const [
+                      FontFeature.tabularFigures(),
+                      FontFeature.liningFigures(),
+                    ])),
+              Text('${up ? "+" : ""}${gPct.toStringAsFixed(2)}%',
+                style: TextStyle(fontFamily: 'DMMono', fontSize: 10.5,
+                    fontWeight: FontWeight.w600, color: col)),
+            ]),
           ]),
         ]),
-      ]),
+      ),
     );
   }
 
