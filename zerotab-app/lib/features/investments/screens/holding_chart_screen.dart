@@ -386,41 +386,99 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
     final crossDate = _cross != null
         ? DateTime.fromMillisecondsSinceEpoch(_cross!.time * 1000, isUtc: false)
         : null;
+
+    // Day-change (intraday) priority for the hero chip. Falls back to
+    // selected-timeframe change when intraday meta is unavailable.
+    final cp  = _meta?.previousClose;
+    final dayAbs = (cp != null && cp != 0) ? ltp - cp : null;
+    final dayPct = (cp != null && cp != 0) ? ((ltp - cp) / cp) * 100 : null;
+    final showDay = dayAbs != null && dayPct != null;
+    final chipUp = showDay ? dayAbs >= 0 : up;
+    final chipCol = chipUp ? AppColors.green : AppColors.red;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 2, 20, 8),
+      padding: const EdgeInsets.fromLTRB(20, 2, 20, 10),
       child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
         Expanded(child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('₹${ltp.toStringAsFixed(2)}', style: const TextStyle(
-              fontFamily: 'DMMono', fontSize: 30, height: 1.0,
-              fontWeight: FontWeight.w700, letterSpacing: -1.1,
-              color: AppColors.text,
-              fontFeatures: [
-                FontFeature.tabularFigures(),
-                FontFeature.liningFigures(),
-              ])),
-            const SizedBox(height: 5),
-            if (tfPct != null && tfAbs != null) Row(children: [
-              Icon(up ? Icons.arrow_upward_rounded
-                  : Icons.arrow_downward_rounded,
-                color: col, size: 13),
+            // ── Big price + inline currency ──
+            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              const Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Text('₹', style: TextStyle(
+                  fontFamily: 'DMMono', fontSize: 18,
+                  fontWeight: FontWeight.w500, color: AppColors.text2,
+                  height: 1.0)),
+              ),
               const SizedBox(width: 2),
-              Text(
-                '${tfAbs >= 0 ? "+" : ""}${tfAbs.toStringAsFixed(2)}  '
-                '(${tfPct >= 0 ? "+" : ""}${tfPct.toStringAsFixed(2)}%)',
-                style: TextStyle(fontFamily: 'DMMono', fontSize: 12,
-                  fontWeight: FontWeight.w600, color: col)),
-              const SizedBox(width: 6),
-              Text(tfLabel, style: const TextStyle(fontFamily: 'DMSans',
-                  fontSize: 10.5, color: AppColors.text3)),
+              Text(ltp.toStringAsFixed(2), style: const TextStyle(
+                fontFamily: 'DMMono', fontSize: 32, height: 1.0,
+                fontWeight: FontWeight.w700, letterSpacing: -1.4,
+                color: AppColors.text,
+                fontFeatures: [
+                  FontFeature.tabularFigures(),
+                  FontFeature.liningFigures(),
+                ])),
+            ]),
+            const SizedBox(height: 8),
+            // ── Day-change pill + TF-change muted ──
+            Row(children: [
+              if (showDay) Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: chipCol.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: chipCol.withValues(alpha: 0.30)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(chipUp ? Icons.arrow_upward_rounded
+                      : Icons.arrow_downward_rounded,
+                    color: chipCol, size: 12),
+                  const SizedBox(width: 3),
+                  Text(
+                    '${dayAbs >= 0 ? "+" : ""}${dayAbs.toStringAsFixed(2)} '
+                    '(${dayPct >= 0 ? "+" : ""}${dayPct.toStringAsFixed(2)}%)',
+                    style: TextStyle(fontFamily: 'DMMono', fontSize: 11.5,
+                      fontWeight: FontWeight.w700, color: chipCol)),
+                ]),
+              ),
+              if (showDay) const SizedBox(width: 8),
+              if (showDay) const Text('Today',
+                style: TextStyle(fontFamily: 'DMSans', fontSize: 10.5,
+                    color: AppColors.text3, fontWeight: FontWeight.w500)),
+              if (tfPct != null && tfAbs != null) ...[
+                if (showDay) const SizedBox(width: 10),
+                if (showDay) Container(
+                  width: 1, height: 11, color: AppColors.border2),
+                if (showDay) const SizedBox(width: 10),
+                Icon(up ? Icons.arrow_upward_rounded
+                    : Icons.arrow_downward_rounded,
+                  color: col, size: 12),
+                const SizedBox(width: 2),
+                Text(
+                  '${tfPct >= 0 ? "+" : ""}${tfPct.toStringAsFixed(2)}%',
+                  style: TextStyle(fontFamily: 'DMMono', fontSize: 11.5,
+                    fontWeight: FontWeight.w600, color: col)),
+                const SizedBox(width: 4),
+                Text(tfLabel, style: const TextStyle(fontFamily: 'DMSans',
+                    fontSize: 10.5, color: AppColors.text3,
+                    fontWeight: FontWeight.w500)),
+              ],
             ]),
           ],
         )),
-        if (crossDate != null) Text(
-          DateFormat('d MMM, HH:mm').format(crossDate),
-          style: const TextStyle(fontFamily: 'DMMono', fontSize: 10.5,
-              color: AppColors.text3)),
+        if (crossDate != null) Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          decoration: BoxDecoration(
+            color: AppColors.bg2,
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(color: AppColors.border)),
+          child: Text(
+            DateFormat('d MMM, HH:mm').format(crossDate),
+            style: const TextStyle(fontFamily: 'DMMono', fontSize: 10,
+                color: AppColors.text2)),
+        ),
       ]),
     );
   }
@@ -532,7 +590,13 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
     ]),
   );
 
-  // ─── Overview tab ───────────────────────────────────────────
+  // ─── Overview tab — broker-grade grouped sections ───────────
+  //
+  // Each section is its own visually-distinct card with a small
+  // leading icon, a tight header line, and a 2-column stat grid.
+  // The pattern is borrowed from Dhan/Groww/Zerodha mobile and
+  // tightened: heavier section dividers, brand-tinted icons,
+  // tabular figures everywhere, soft inner shadows on cards.
   Widget _overviewTab() {
     final m  = _meta;
     final h  = widget.holding;
@@ -543,51 +607,111 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
         ? ((lp - cp) / cp) * 100 : null;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 80),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 90),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // ── Your holding (hidden when drilling into a peer) ──
         if (!_isPeer) ...[
           _summaryCard(),
+          const SizedBox(height: 14),
+        ],
+
+        // ── Today's activity ──
+        _SectionCard(
+          icon: Icons.today_rounded,
+          iconColor: AppColors.accent,
+          title: "Today's activity",
+          subtitle: _meta?.exchange != null ? '${_meta!.exchange} live' : null,
+          loading: _loading && _bars.isEmpty,
+          child: _statGrid([
+            if (dayChange != null)
+              _Stat("Day's change",
+                '${dayChange >= 0 ? "+" : ""}₹${dayChange.toStringAsFixed(2)}',
+                sub: dayChangePct != null
+                    ? '${dayChangePct >= 0 ? "+" : ""}${dayChangePct.toStringAsFixed(2)}%'
+                    : null,
+                color: dayChange >= 0 ? AppColors.green : AppColors.red),
+            if (m?.dayLow != null && m?.dayHigh != null)
+              _Stat("Day's range",
+                '₹${m!.dayLow!.toStringAsFixed(2)} – ₹${m.dayHigh!.toStringAsFixed(2)}'),
+            if (m?.volume != null && m!.volume! > 0)
+              _Stat('Volume', _fmtVol(m.volume!)),
+            if (m?.previousClose != null)
+              _Stat('Prev. close', '₹${m!.previousClose!.toStringAsFixed(2)}'),
+          ]),
+        ),
+        const SizedBox(height: 12),
+
+        // ── 52-week range ──
+        if (m?.fiftyTwoWeekHigh != null && m?.fiftyTwoWeekLow != null) ...[
+          _SectionCard(
+            icon: Icons.timeline_rounded,
+            iconColor: AppColors.gold,
+            title: '52-week range',
+            subtitle: 'Where price sits in the year',
+            loading: false,
+            child: _RangeBar(
+              low: m!.fiftyTwoWeekLow!,
+              high: m.fiftyTwoWeekHigh!,
+              current: m.regularMarketPrice
+                  ?? (_bars.isNotEmpty ? _bars.last.close : m.fiftyTwoWeekLow!),
+            ),
+          ),
           const SizedBox(height: 12),
         ],
-        _sectionTitle('Today'),
-        _statGrid([
-          if (dayChange != null)
-            _Stat('Day change',
-              '${dayChange >= 0 ? "+" : ""}₹${dayChange.toStringAsFixed(2)}',
-              sub: dayChangePct != null
-                  ? '${dayChangePct >= 0 ? "+" : ""}${dayChangePct.toStringAsFixed(2)}%'
-                  : null,
-              color: dayChange >= 0 ? AppColors.green : AppColors.red),
-          if (m?.dayLow != null && m?.dayHigh != null)
-            _Stat('Range',
-              '₹${m!.dayLow!.toStringAsFixed(2)} – ₹${m.dayHigh!.toStringAsFixed(2)}'),
-          if (m?.volume != null)
-            _Stat('Volume', _fmtVol(m!.volume!)),
-          if (m?.previousClose != null)
-            _Stat('Prev close', '₹${m!.previousClose!.toStringAsFixed(2)}'),
-        ]),
-        const SizedBox(height: 16),
-        if (m?.fiftyTwoWeekHigh != null && m?.fiftyTwoWeekLow != null) ...[
-          _sectionTitle('52-week range'),
-          _RangeBar(
-            low: m!.fiftyTwoWeekLow!,
-            high: m.fiftyTwoWeekHigh!,
-            current: m.regularMarketPrice
-                ?? (_bars.isNotEmpty ? _bars.last.close : m.fiftyTwoWeekLow!),
-          ),
-          const SizedBox(height: 16),
-        ],
-        _sectionTitle('Instrument'),
-        _statGrid([
-          if (m?.longName != null) _Stat('Name', m!.longName!),
-          if (m?.instrumentType != null) _Stat('Type', m!.instrumentType!),
-          if (m?.exchange != null) _Stat('Exchange', m!.exchange!),
-          if (m?.currency != null) _Stat('Currency', m!.currency!),
-          if (widget.kind == HoldingKind.mf && h.amcName != null)
-            _Stat('AMC', h.amcName!),
-        ]),
+
+        // ── Key info / Instrument ──
+        _SectionCard(
+          icon: Icons.account_balance_rounded,
+          iconColor: AppColors.teal,
+          title: widget.kind == HoldingKind.mf ? 'About fund' : 'About company',
+          subtitle: null,
+          loading: _loading && _bars.isEmpty,
+          child: _statGrid([
+            if (m?.longName != null) _Stat('Name', m!.longName!),
+            if (m?.instrumentType != null)
+              _Stat('Type', _humanInstrument(m!.instrumentType!)),
+            if (m?.exchange != null) _Stat('Exchange', m!.exchange!),
+            if (m?.currency != null) _Stat('Currency', m!.currency!),
+            if (widget.kind == HoldingKind.mf && h.amcName != null)
+              _Stat('AMC', h.amcName!),
+          ]),
+        ),
+        const SizedBox(height: 18),
+
+        // ── Footer disclaimer ──
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: AppColors.bg2.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border)),
+          child: Row(children: [
+            const Icon(Icons.info_outline_rounded,
+                color: AppColors.text3, size: 13),
+            const SizedBox(width: 8),
+            Expanded(child: Text(
+              widget.kind == HoldingKind.mf
+                  ? 'NAV values are end-of-day from AMFI via mfapi.in.'
+                  : 'Prices delayed ~15 min. For real-time tick data, '
+                    'connect a broker account in Settings (coming soon).',
+              style: const TextStyle(fontFamily: 'DMSans',
+                  fontSize: 10.5, color: AppColors.text3, height: 1.45))),
+          ]),
+        ),
       ]),
     );
+  }
+
+  String _humanInstrument(String t) {
+    switch (t.toUpperCase()) {
+      case 'EQUITY':     return 'Equity';
+      case 'ETF':        return 'Exchange-traded fund';
+      case 'MUTUALFUND': return 'Mutual fund';
+      case 'FUTURE':     return 'Futures';
+      case 'CRYPTO':     return 'Cryptocurrency';
+      case 'INDEX':      return 'Index';
+      default:           return t;
+    }
   }
 
   Widget _sectionTitle(String s) => Padding(
@@ -610,25 +734,39 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
       itemCount: stats.length,
       itemBuilder: (_, i) {
         final s = stats[i];
+        // Flat tile — inside _SectionCard so we drop the outer border;
+        // a subtle bg3 panel keeps each stat visually grouped without
+        // adding noise. Label is uppercase tracking, value is mono.
         return Container(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
           decoration: BoxDecoration(
-            color: AppColors.bg2,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.border)),
+            color: AppColors.bg3.withValues(alpha: 0.45),
+            borderRadius: BorderRadius.circular(8)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text(s.label, style: const TextStyle(fontFamily: 'DMSans',
-                fontSize: 10, color: AppColors.text3)),
-            Row(children: [
+            Text(s.label.toUpperCase(), style: const TextStyle(
+              fontFamily: 'DMSans', fontSize: 9,
+              fontWeight: FontWeight.w600, letterSpacing: 0.4,
+              color: AppColors.text3)),
+            Row(crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic, children: [
               Expanded(child: Text(s.value, style: TextStyle(
-                fontFamily: 'DMMono', fontSize: 13, fontWeight: FontWeight.w700,
-                color: s.color ?? AppColors.text), maxLines: 1,
-                overflow: TextOverflow.ellipsis)),
-              if (s.sub != null) const SizedBox(width: 6),
+                fontFamily: 'DMMono', fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+                color: s.color ?? AppColors.text,
+                fontFeatures: const [
+                  FontFeature.tabularFigures(),
+                  FontFeature.liningFigures(),
+                ]), maxLines: 1, overflow: TextOverflow.ellipsis)),
+              if (s.sub != null) const SizedBox(width: 5),
               if (s.sub != null) Text(s.sub!, style: TextStyle(
-                fontFamily: 'DMMono', fontSize: 10.5, fontWeight: FontWeight.w600,
-                color: s.color ?? AppColors.text2)),
+                fontFamily: 'DMMono', fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                color: s.color ?? AppColors.text2,
+                fontFeatures: const [
+                  FontFeature.tabularFigures(),
+                  FontFeature.liningFigures(),
+                ])),
             ]),
           ]),
         );
@@ -752,7 +890,7 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
           style: TextStyle(fontFamily: 'DMSans', fontSize: 12,
               color: AppColors.text3))));
     }
-    final peers = peersOf(_symbolOrCode);
+    final peers = peersOf(_symbolOrCode, limit: 5);
     if (peers.isEmpty) {
       return const Center(child: Padding(padding: EdgeInsets.all(40),
         child: Text('No sector peers mapped for this symbol yet',
@@ -770,17 +908,18 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
             style: const TextStyle(fontFamily: 'DMSans', fontSize: 11,
                 color: AppColors.text3)),
         ),
-        for (final p in peers) _PeerRow(
-          symbol: p,
+        for (int i = 0; i < peers.length; i++) _PeerRow(
+          symbol: peers[i],
           exchange: _exchange,
           svc: _svc,
+          index: i,
           onTap: () => Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => HoldingChartScreen(
               holding: widget.holding,
               kind: HoldingKind.stock,
-              overrideSymbol: p,
+              overrideSymbol: peers[i],
               overrideExchange: _exchange,
-              overrideName: p,
+              overrideName: peers[i],
             ),
           )),
         ),
@@ -886,6 +1025,67 @@ class _PerfRow {
   const _PerfRow({required this.label, required this.pct, required this.pctAbs});
 }
 
+// ─── Section card — broker-style grouped section ─────────────
+//
+// Combines a small leading icon, title, optional subtitle and the
+// section body inside one bordered card. Modeled after the
+// "section cards" in Dhan and Robinhood (large brokers' detail
+// pages all share this exact pattern — small icon left, title,
+// optional caption, divider, content).
+class _SectionCard extends StatelessWidget {
+  final IconData icon;
+  final Color    iconColor;
+  final String   title;
+  final String?  subtitle;
+  final bool     loading;
+  final Widget   child;
+  const _SectionCard({
+    required this.icon, required this.iconColor,
+    required this.title, required this.subtitle,
+    required this.loading, required this.child,
+  });
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: AppColors.bg2,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 28, height: 28,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.13),
+              borderRadius: BorderRadius.circular(7)),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 15, color: iconColor),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: const TextStyle(
+                fontFamily: 'DMSans', fontSize: 13,
+                fontWeight: FontWeight.w700, color: AppColors.text)),
+              if (subtitle != null) Text(subtitle!,
+                style: const TextStyle(fontFamily: 'DMSans',
+                    fontSize: 10.5, color: AppColors.text3)),
+            ])),
+          if (loading) const SizedBox(width: 12, height: 12,
+            child: CircularProgressIndicator(
+                strokeWidth: 1.4, color: AppColors.text3)),
+        ]),
+        const SizedBox(height: 12),
+        Container(height: 1, color: AppColors.border),
+        const SizedBox(height: 12),
+        child,
+      ]),
+    );
+  }
+}
+
 // ─── 52-week range visual ────────────────────────────────────
 class _RangeBar extends StatelessWidget {
   final double low, high, current;
@@ -894,13 +1094,7 @@ class _RangeBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final span = (high - low).clamp(0.0001, double.infinity);
     final pos  = ((current - low) / span).clamp(0.0, 1.0);
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.bg2,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.border)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Text('Low ₹${low.toStringAsFixed(2)}',
             style: const TextStyle(fontFamily: 'DMMono', fontSize: 11,
@@ -936,8 +1130,7 @@ class _RangeBar extends StatelessWidget {
         Text('Current ₹${current.toStringAsFixed(2)}',
           style: const TextStyle(fontFamily: 'DMMono', fontSize: 11.5,
               fontWeight: FontWeight.w700, color: AppColors.text)),
-      ]),
-    );
+      ]);
   }
 }
 
@@ -1410,9 +1603,10 @@ class _PeerRow extends StatefulWidget {
   final String symbol, exchange;
   final ChartDataService svc;
   final VoidCallback onTap;
+  final int index;
   const _PeerRow({
     required this.symbol, required this.exchange,
-    required this.svc, required this.onTap,
+    required this.svc, required this.onTap, required this.index,
   });
   @override
   State<_PeerRow> createState() => _PeerRowState();
@@ -1426,7 +1620,17 @@ class _PeerRowState extends State<_PeerRow> {
   @override
   void initState() {
     super.initState();
-    _load();
+    // Stagger peer fetches so we don't hammer the CORS proxy with 6+
+    // parallel requests (some proxies rate-limit hard and start
+    // returning 403). 250 ms × row-index keeps the proxy happy and
+    // reads as a graceful cascade in the UI.
+    _scheduleLoad();
+  }
+
+  Future<void> _scheduleLoad() async {
+    final delay = Duration(milliseconds: 250 * widget.index);
+    await Future.delayed(delay);
+    if (mounted) _load();
   }
 
   Future<void> _load() async {
