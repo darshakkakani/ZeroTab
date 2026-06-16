@@ -262,6 +262,21 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
   // ── Compute user's net balance in EVERY group (parallel) ──────
   // Positive = group owes user; Negative = user owes group.
   // This feeds the hero card AND the per-group tile balance chip.
+  //
+  // Algorithm (must match GroupDetailScreen._groupNetBalances):
+  //   1. Pull expenses with their settle_expense_shares JOIN.
+  //   2. Pull members (need full list with row-id + user_id to derive
+  //      stable keys, NOT just count — phone-only members get row-id keys).
+  //   3. For each expense:
+  //        - Payer is credited the full amount.
+  //        - If `shares` rows exist (Restaurant Mode / explicit split),
+  //          deduct each member's saved share.
+  //        - Otherwise, equal-split — distribute paise remainder one paisa
+  //          each to the first `remainder` members (sorted by stable key)
+  //          so the same expense always produces the same per-member share
+  //          everywhere. Truncating remainder leaks paise; dumping all
+  //          remainder on members[0] is unfair.
+  //   4. Settlements: paid_by credited, notes (receiver uid) debited.
   Future<void> _loadGroupBalances() async {
     if (_groups.isEmpty) { _groupBalances = {}; return; }
     final uid    = _uid;
@@ -269,19 +284,27 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
 
     await Future.wait(_groups.map((group) async {
       try {
-        // Parallel: expenses + member count for this group
         final results = await Future.wait([
           _db.from('settle_expenses')
-              .select('amount, paid_by, is_settlement, notes')
+              .select('amount, paid_by, is_settlement, notes, '
+                      'settle_expense_shares(member_id, amount)')
               .eq('group_id', group.id),
           _db.from('settle_group_members')
-              .select('user_id')
+              .select('id, user_id')
               .eq('group_id', group.id),
         ]);
 
-        final expList = (results[0] as List);
-        final n       = (results[1] as List).length;
-        if (n == 0) return;
+        final expList    = (results[0] as List);
+        final memberRows = (results[1] as List);
+        if (memberRows.isEmpty) return;
+
+        // Stable keys for split distribution: user_id when present, else
+        // members.id. Sort so remainder distribution is deterministic.
+        final memberKeys = memberRows
+            .map((m) => (m['user_id'] as String?) ?? (m['id'] as String))
+            .toList()
+          ..sort();
+        final n = memberKeys.length;
 
         int balance = 0;
         for (final e in expList) {
@@ -290,16 +313,34 @@ class _SettleUpScreenState extends ConsumerState<SettleUpScreen>
           final paidBy  = e['paid_by'] as String?;
 
           if (isSettl) {
-            // Settlement reversal: paid_by paid the debt, notes = toId
             if (paidBy == uid) balance += amount;
             if ((e['notes'] as String?) == uid) balance -= amount;
+            continue;
+          }
+
+          if (paidBy == uid) balance += amount;
+
+          final sharesRaw = (e['settle_expense_shares'] as List?) ?? [];
+          if (sharesRaw.isNotEmpty) {
+            for (final s in sharesRaw) {
+              final memberId = s['member_id'] as String?;
+              final sAmt     = (s['amount'] as int?) ?? 0;
+              if (memberId == uid) balance -= sAmt;
+            }
           } else {
-            // Regular expense: equal split
-            if (paidBy == uid) balance += amount;
-            balance -= amount ~/ n;
+            // Equal split with fair remainder distribution.
+            final share     = amount ~/ n;
+            final remainder = amount % n;
+            final myIdx     = memberKeys.indexOf(uid);
+            if (myIdx >= 0) {
+              balance -= share + (myIdx < remainder ? 1 : 0);
+            }
           }
         }
-        if (balance.abs() > 50) result[group.id] = balance;
+
+        // Threshold: ₹0.50 (matches GroupDetailScreen and prevents the
+        // "main screen shows ₹0.75 but detail says settled" mismatch).
+        if (balance.abs() >= 50) result[group.id] = balance;
       } catch (_) {}
     }));
 
@@ -1383,9 +1424,12 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
 
   Future<void> _loadExpenses() async {
     try {
+      // JOIN settle_expense_shares so Restaurant Mode / explicit splits are
+      // included in the balance calc. `shares` is aliased via the embedded
+      // select; SettleExpense.fromJson reads it as `j['shares']`.
       final rows = await _db
           .from('settle_expenses')
-          .select()
+          .select('*, shares:settle_expense_shares(*)')
           .eq('group_id', widget.group.id)
           .order('expense_date', ascending: false)
           .order('created_at', ascending: false);
@@ -1462,26 +1506,43 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
   }
 
   // ── Compute net balances for this group ───────────────────────
+  // Algorithm (must stay in sync with _SettleUpScreenState._loadGroupBalances):
+  //   • Payer credited full amount.
+  //   • If exp.shares is populated (Restaurant Mode / explicit split),
+  //     deduct each member's saved share.
+  //   • Otherwise equal-split with FAIR remainder distribution: members
+  //     sorted by stable key; the first `remainder` members each absorb
+  //     one extra paisa. (Old code dumped the entire remainder on
+  //     members[0] — unfair and produced a mismatch vs the main screen
+  //     which truncated remainder entirely.)
+  //   • Settlements: paid_by credited, notes (= receiver uid) debited.
   Map<String, int> get _groupNetBalances {
     if (_members.isEmpty) return {};
     final map = <String, int>{};
 
+    // Stable sort by key — deterministic remainder distribution.
+    final sortedKeys = _members.map((m) => m.key).toList()..sort();
+    final n = sortedKeys.length;
+
     for (final exp in _expenses.where((e) => !e.isSettlement)) {
       if (exp.paidBy == null) continue;
-
-      // Payer gets credited the full expense amount
       map[exp.paidBy!] = (map[exp.paidBy!] ?? 0) + exp.amount;
-
-      // Equal split across ALL members (including those without userId)
-      final n = _members.length;
       if (n == 0) continue;
-      final share     = exp.amount ~/ n;
-      final remainder = exp.amount % n;
 
-      for (int i = 0; i < _members.length; i++) {
-        final key        = _members[i].key;          // userId ?? row-id
-        final thisShare  = share + (i == 0 ? remainder : 0);
-        map[key] = (map[key] ?? 0) - thisShare;
+      if (exp.shares.isNotEmpty) {
+        for (final s in exp.shares) {
+          final key = s.memberId;
+          if (key == null) continue;
+          map[key] = (map[key] ?? 0) - s.amount;
+        }
+      } else {
+        final share     = exp.amount ~/ n;
+        final remainder = exp.amount % n;
+        for (int i = 0; i < n; i++) {
+          final key       = sortedKeys[i];
+          final thisShare = share + (i < remainder ? 1 : 0);
+          map[key] = (map[key] ?? 0) - thisShare;
+        }
       }
     }
 
@@ -1495,8 +1556,9 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
       }
     }
 
-    // Remove near-zero balances (rounding noise < ₹1)
-    map.removeWhere((_, v) => v.abs() < 100);
+    // Threshold: ₹0.50 — must match _loadGroupBalances on the main screen
+    // so the same balance is shown consistently on both pages.
+    map.removeWhere((_, v) => v.abs() < 50);
     return map;
   }
 
@@ -3344,42 +3406,28 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
           ),
           const SizedBox(height: 14),
 
-          // Split mode
-          const Text('Split', style: TextStyle(fontFamily: 'DMSans',
-              fontSize: 11, color: AppColors.text3)),
-          const SizedBox(height: 6),
-          Row(children: [
-            for (final mode in ['EQUAL', 'EXACT', 'PERCENTAGE'])
-              Expanded(child: Padding(
-                padding: EdgeInsets.only(
-                    right: mode != 'PERCENTAGE' ? 6 : 0),
-                child: GestureDetector(
-                  onTap: () => setState(() => _splitMode = mode),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 120),
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: _splitMode == mode
-                          ? AppColors.accent.withValues(alpha: 0.15)
-                          : AppColors.bg3,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: _splitMode == mode
-                            ? AppColors.accent.withValues(alpha: 0.50)
-                            : AppColors.border),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      mode == 'EQUAL' ? '÷ Equal' :
-                      mode == 'EXACT' ? '₹ Exact' : '% Percent',
-                      style: TextStyle(fontFamily: 'DMSans',
-                          fontSize: 11, fontWeight: FontWeight.w600,
-                          color: _splitMode == mode
-                              ? AppColors.accent : AppColors.text2)),
-                  ),
-                ),
-              )),
-          ]),
+          // Quick Add only supports equal split (there is no per-member
+          // input UI here). EXACT/PERCENTAGE buttons used to render here
+          // but they ONLY recorded a tag in DB — the actual balance calc
+          // always used equal-split, which silently produced wrong
+          // balances. Use Item Split mode for per-person amounts.
+          if (!_restaurantMode) Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.bg3,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.border)),
+            child: Row(children: [
+              const Icon(Icons.call_split_rounded,
+                  size: 14, color: AppColors.text3),
+              const SizedBox(width: 8),
+              Expanded(child: Text(
+                'Split equally across ${widget.members.where((m) => m.userId != null).length} '
+                'members. Switch to Item Split for per-person amounts.',
+                style: const TextStyle(fontFamily: 'DMSans', fontSize: 11,
+                    color: AppColors.text3))),
+            ]),
+          ),
           const SizedBox(height: 12),
           _field('Notes (optional)', _notesCtrl, 'Any details...'),
           const SizedBox(height: 20),

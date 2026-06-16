@@ -7,6 +7,7 @@ import '../../../shared/services/providers.dart';
 import '../../../shared/widgets/zt_card.dart';
 import '../../../shared/services/api_service.dart';
 import '../../../core/constants/api_constants.dart';
+import 'holding_chart_screen.dart';
 
 // ── Enums ──────────────────────────────────────────────────
 enum _SortMode { value, gainPct, lossPct, name }
@@ -1270,7 +1271,21 @@ class _DismissibleRow extends StatelessWidget {
       ) ?? false;
     },
     onDismissed: (_) => onDelete(holding, type),
-    child: _DhanRow(holding: holding, type: type, showTypeBadge: showTypeBadge),
+    child: Builder(builder: (ctx) => InkWell(
+      onTap: () => Navigator.of(ctx).push(MaterialPageRoute(
+        builder: (_) => HoldingChartScreen(
+          holding: holding,
+          kind: switch (type) {
+            _HoldingType.stock     => HoldingKind.stock,
+            _HoldingType.mf        => HoldingKind.mf,
+            _HoldingType.etf       => HoldingKind.etf,
+            _HoldingType.commodity => HoldingKind.commodity,
+          },
+        ),
+      )),
+      borderRadius: BorderRadius.circular(AppRadius.xl),
+      child: _DhanRow(holding: holding, type: type, showTypeBadge: showTypeBadge),
+    )),
   );
 }
 
