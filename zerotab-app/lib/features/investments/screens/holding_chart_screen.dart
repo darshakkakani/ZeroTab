@@ -349,20 +349,6 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
                 fontFamily: 'DMSans', fontSize: 10.5,
                 fontWeight: FontWeight.w600, color: AppColors.text3)),
             ],
-            const Text('  ·  ', style: TextStyle(
-              fontFamily: 'DMSans', color: AppColors.text3, fontSize: 10.5)),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              decoration: BoxDecoration(
-                color: AppColors.gold.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: AppColors.gold.withValues(alpha: 0.25))),
-              child: Text(
-                widget.kind == HoldingKind.mf ? 'NAV (EOD)' : 'Delayed 15 min',
-                style: const TextStyle(fontFamily: 'DMSans', fontSize: 8.5,
-                    fontWeight: FontWeight.w700, color: AppColors.gold,
-                    letterSpacing: 0.3)),
-            ),
           ]),
         ],
       )),
@@ -674,28 +660,6 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
             if (m?.currency != null) _Stat('Currency', m!.currency!),
             if (widget.kind == HoldingKind.mf && h.amcName != null)
               _Stat('AMC', h.amcName!),
-          ]),
-        ),
-        const SizedBox(height: 18),
-
-        // ── Footer disclaimer ──
-        Container(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          decoration: BoxDecoration(
-            color: AppColors.bg2.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.border)),
-          child: Row(children: [
-            const Icon(Icons.info_outline_rounded,
-                color: AppColors.text3, size: 13),
-            const SizedBox(width: 8),
-            Expanded(child: Text(
-              widget.kind == HoldingKind.mf
-                  ? 'NAV values are end-of-day from AMFI via mfapi.in.'
-                  : 'Prices delayed ~15 min. For real-time tick data, '
-                    'connect a broker account in Settings (coming soon).',
-              style: const TextStyle(fontFamily: 'DMSans',
-                  fontSize: 10.5, color: AppColors.text3, height: 1.45))),
           ]),
         ),
       ]),
@@ -1135,9 +1099,21 @@ class _RangeBar extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  Area / Line chart view (fl_chart)
+//  Area / Line chart view — broker-grade UX
+//
+//  • fl_chart renders the main line + area + grid + axis labels.
+//  • Native fl_chart touch is DISABLED. We layer a CustomPainter on
+//    top that draws a real broker-style crosshair: dashed vertical +
+//    horizontal lines tracking the cursor, with pill labels showing
+//    the exact price on the right axis and the exact date on the
+//    bottom axis (matches Dhan / Kite / Groww UX).
+//  • Crosshair responds to BOTH mouse hover (web) and touch drag
+//    (mobile) — the previous build only fired on tap because fl_chart
+//    doesn't expose pure hover events.
+//  • A pulse dot at the latest data point shows the current price
+//    visually — same "live tick" affordance Dhan uses.
 // ═══════════════════════════════════════════════════════════════
-class _AreaLineChartView extends StatelessWidget {
+class _AreaLineChartView extends StatefulWidget {
   final List<Candle> bars;
   final bool filled;
   final List<IndicatorPoint> ma20, ma50, ema9;
@@ -1148,23 +1124,61 @@ class _AreaLineChartView extends StatelessWidget {
     required this.ma20, required this.ma50, required this.ema9,
     required this.showVolume, required this.onCross,
   });
+  @override
+  State<_AreaLineChartView> createState() => _AreaLineChartViewState();
+}
+
+class _AreaLineChartViewState extends State<_AreaLineChartView> {
+  // Chart-plot insets (must match the fl_chart titles' reservedSize so
+  // the overlay crosshair lines up to the pixel with fl_chart's axes).
+  static const double _topInset    = 6;
+  static const double _bottomInset = 22;
+  static const double _rightInset  = 36;
+  static const double _leftInset   = 0;
+
+  Offset? _cursor;
+
+  void _setCursor(Offset? p, Rect plotRect, List<Candle> bars) {
+    setState(() => _cursor = p);
+    if (p == null || !plotRect.contains(p) || bars.isEmpty) {
+      widget.onCross(null);
+      return;
+    }
+    final t = (p.dx - plotRect.left) / plotRect.width;
+    final i = (t * (bars.length - 1)).round().clamp(0, bars.length - 1);
+    final b = bars[i];
+    widget.onCross(_CrossInfo(
+      time: b.timeSec, close: b.close,
+      open: b.open, high: b.high, low: b.low, volume: b.volume,
+    ));
+  }
 
   @override
   Widget build(BuildContext context) {
+    final bars = widget.bars;
     final closes = bars.map((b) => b.close).toList(growable: false);
     double minY = closes.first, maxY = closes.first;
     for (final v in closes) {
       if (v < minY) minY = v;
       if (v > maxY) maxY = v;
     }
-    for (final i in [...ma20, ...ma50, ...ema9]) {
+    for (final i in [...widget.ma20, ...widget.ma50, ...widget.ema9]) {
       if (i.value < minY) minY = i.value;
       if (i.value > maxY) maxY = i.value;
     }
-    final pad = (maxY - minY) * 0.08;
-    if (pad == 0) { minY -= 1; maxY += 1; } else { minY -= pad; maxY += pad; }
+    // 5% padding above + below the actual data. Clamp minY at zero —
+    // a price chart should never show negative axis labels (the old
+    // build was showing "-₹12" for fast-growing stocks like CUPID).
+    final pad = (maxY - minY) * 0.05;
+    if (pad == 0) {
+      minY = math.max(0, minY - 1);
+      maxY += 1;
+    } else {
+      minY = math.max(0, minY - pad);
+      maxY += pad;
+    }
 
-    final up = bars.last.close >= bars.first.close;
+    final up        = bars.last.close >= bars.first.close;
     final lineColor = up ? AppColors.green : AppColors.red;
 
     final mainSpots = <FlSpot>[
@@ -1174,7 +1188,6 @@ class _AreaLineChartView extends StatelessWidget {
 
     LineChartBarData lineSeries(List<IndicatorPoint> pts, Color c) {
       final spots = <FlSpot>[];
-      // Map indicator times → bar indices using a hash to find x.
       final timeToIdx = <int, int>{
         for (int i = 0; i < bars.length; i++) bars[i].timeSec: i,
       };
@@ -1184,125 +1197,306 @@ class _AreaLineChartView extends StatelessWidget {
       }
       return LineChartBarData(
         spots: spots,
-        isCurved: false,
-        color: c,
-        barWidth: 1.3,
+        isCurved: false, color: c, barWidth: 1.3,
         isStrokeCapRound: true,
         dotData: const FlDotData(show: false),
       );
     }
 
-    return LineChart(
-      LineChartData(
-        minY: minY, maxY: maxY,
-        minX: 0, maxX: (bars.length - 1).toDouble(),
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: false,
-          horizontalInterval: ((maxY - minY) / 4).clamp(0.0001, double.infinity),
-          getDrawingHorizontalLine: (_) => const FlLine(
-            color: Color(0x14FFFFFF), strokeWidth: 1),
-        ),
-        titlesData: FlTitlesData(
-          show: true,
-          rightTitles: AxisTitles(sideTitles: SideTitles(
-            showTitles: true, reservedSize: 48,
-            getTitlesWidget: (v, _) => Padding(
-              padding: const EdgeInsets.only(left: 6),
-              child: Text('₹${v.toStringAsFixed(0)}',
-                style: const TextStyle(fontFamily: 'DMMono', fontSize: 9.5,
-                  color: AppColors.text3)),
+    return LayoutBuilder(builder: (ctx, c) {
+      final size = Size(c.maxWidth, c.maxHeight);
+      final plotRect = Rect.fromLTRB(
+        _leftInset, _topInset,
+        size.width - _rightInset, size.height - _bottomInset,
+      );
+
+      // Pulse dot position — at the latest data point.
+      final lastIdx = bars.length - 1;
+      final lastX = plotRect.left + (lastIdx / (bars.length - 1)) * plotRect.width;
+      final lastY = plotRect.top + (1 - (bars.last.close - minY) / (maxY - minY)) * plotRect.height;
+
+      final chart = LineChart(
+        LineChartData(
+          minY: minY, maxY: maxY,
+          minX: 0, maxX: (bars.length - 1).toDouble(),
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            horizontalInterval: ((maxY - minY) / 4).clamp(0.0001, double.infinity),
+            getDrawingHorizontalLine: (_) => const FlLine(
+              color: Color(0x14FFFFFF), strokeWidth: 1),
+          ),
+          titlesData: FlTitlesData(
+            show: true,
+            rightTitles: AxisTitles(sideTitles: SideTitles(
+              showTitles: true, reservedSize: _rightInset,
+              getTitlesWidget: (v, _) => Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Text('₹${v.toStringAsFixed(0)}',
+                  style: const TextStyle(fontFamily: 'DMMono', fontSize: 9,
+                    color: AppColors.text3)),
+              ),
+            )),
+            leftTitles:  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            bottomTitles: AxisTitles(sideTitles: SideTitles(
+              showTitles: true, reservedSize: _bottomInset,
+              interval: (bars.length / 4).clamp(1, double.infinity),
+              getTitlesWidget: (v, _) {
+                final i = v.toInt();
+                if (i < 0 || i >= bars.length) return const SizedBox.shrink();
+                final t = DateTime.fromMillisecondsSinceEpoch(
+                    bars[i].timeSec * 1000, isUtc: false);
+                return Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(DateFormat('d MMM').format(t),
+                    style: const TextStyle(fontFamily: 'DMSans', fontSize: 9,
+                        color: AppColors.text3)),
+                );
+              },
+            )),
+          ),
+          borderData: FlBorderData(show: false),
+          lineBarsData: [
+            LineChartBarData(
+              spots: mainSpots,
+              isCurved: false, color: lineColor, barWidth: 1.9,
+              isStrokeCapRound: true,
+              dotData: const FlDotData(show: false),
+              belowBarData: widget.filled
+                ? BarAreaData(show: true, gradient: LinearGradient(
+                    begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                    colors: [
+                      lineColor.withOpacity(0.32),
+                      lineColor.withOpacity(0.00),
+                    ]))
+                : BarAreaData(show: false),
             ),
-          )),
-          leftTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          topTitles:    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          bottomTitles: AxisTitles(sideTitles: SideTitles(
-            showTitles: true, reservedSize: 22,
-            interval: (bars.length / 4).clamp(1, double.infinity),
-            getTitlesWidget: (v, _) {
-              final i = v.toInt();
-              if (i < 0 || i >= bars.length) return const SizedBox.shrink();
-              final t = DateTime.fromMillisecondsSinceEpoch(
-                  bars[i].timeSec * 1000, isUtc: false);
-              return Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(DateFormat('d MMM').format(t),
-                  style: const TextStyle(fontFamily: 'DMSans', fontSize: 9,
-                      color: AppColors.text3)),
-              );
-            },
-          )),
+            if (widget.ma20.isNotEmpty) lineSeries(widget.ma20, AppColors.gold),
+            if (widget.ma50.isNotEmpty) lineSeries(widget.ma50, AppColors.teal),
+            if (widget.ema9.isNotEmpty) lineSeries(widget.ema9, AppColors.accent),
+          ],
+          // Disable fl_chart's native touch — we draw our own crosshair
+          // on top so it works on mouse hover (web) AND touch drag.
+          lineTouchData: const LineTouchData(enabled: false),
         ),
-        borderData: FlBorderData(show: false),
-        lineBarsData: [
-          LineChartBarData(
-            spots: mainSpots,
-            isCurved: false,
-            color: lineColor,
-            barWidth: 1.8,
-            isStrokeCapRound: true,
-            dotData: const FlDotData(show: false),
-            belowBarData: filled
-              ? BarAreaData(show: true, gradient: LinearGradient(
-                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                  colors: [
-                    lineColor.withOpacity(0.28),
-                    lineColor.withOpacity(0.00),
-                  ]))
-              : BarAreaData(show: false),
-          ),
-          if (ma20.isNotEmpty) lineSeries(ma20, AppColors.gold),
-          if (ma50.isNotEmpty) lineSeries(ma50, AppColors.teal),
-          if (ema9.isNotEmpty) lineSeries(ema9, AppColors.accent),
-        ],
-        lineTouchData: LineTouchData(
-          enabled: true,
-          handleBuiltInTouches: true,
-          touchTooltipData: LineTouchTooltipData(
-            getTooltipColor: (_) => AppColors.bg2,
-            tooltipBorder: const BorderSide(color: AppColors.border),
-            tooltipPadding: const EdgeInsets.symmetric(
-                horizontal: 10, vertical: 6),
-            getTooltipItems: (items) => items.map((it) {
-              if (it.barIndex != 0) return null; // only show tooltip for main
-              final i = it.x.toInt().clamp(0, bars.length - 1);
-              final b = bars[i];
-              return LineTooltipItem(
-                '₹${b.close.toStringAsFixed(2)}\n${DateFormat('d MMM yyyy').format(DateTime.fromMillisecondsSinceEpoch(b.timeSec * 1000, isUtc: false))}',
-                const TextStyle(fontFamily: 'DMMono', fontSize: 11,
-                  fontWeight: FontWeight.w600, color: AppColors.text),
-              );
-            }).toList(),
-          ),
-          getTouchedSpotIndicator: (_, indicators) => indicators.map((_) =>
-            TouchedSpotIndicatorData(
-              FlLine(color: lineColor.withOpacity(0.5), strokeWidth: 1,
-                  dashArray: [4, 4]),
-              FlDotData(show: true, getDotPainter: (s, _, __, ___) =>
-                FlDotCirclePainter(radius: 3.5,
-                  color: lineColor, strokeWidth: 2, strokeColor: AppColors.bg)),
-            )).toList(),
-          touchCallback: (event, response) {
-            if (!event.isInterestedForInteractions ||
-                response == null || response.lineBarSpots == null ||
-                response.lineBarSpots!.isEmpty) {
-              onCross(null);
-              return;
-            }
-            final i = response.lineBarSpots!.first.x.toInt()
-                .clamp(0, bars.length - 1);
-            final b = bars[i];
-            onCross(_CrossInfo(
-              time: b.timeSec, close: b.close,
-              open: b.open, high: b.high, low: b.low, volume: b.volume,
-            ));
-          },
+        duration: const Duration(milliseconds: 220),
+      );
+
+      return MouseRegion(
+        onHover: (e) => _setCursor(e.localPosition, plotRect, bars),
+        onExit:  (_) => _setCursor(null, plotRect, bars),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown:   (d) => _setCursor(d.localPosition, plotRect, bars),
+          onPanStart:  (d) => _setCursor(d.localPosition, plotRect, bars),
+          onPanUpdate: (d) => _setCursor(d.localPosition, plotRect, bars),
+          onPanEnd:    (_) => _setCursor(null, plotRect, bars),
+          onPanCancel: ()  => _setCursor(null, plotRect, bars),
+          child: Stack(children: [
+            chart,
+            // Pulse dot at latest price (no-op when cursor active so
+            // it doesn't compete visually with the crosshair).
+            if (_cursor == null && lastX.isFinite && lastY.isFinite)
+              Positioned(
+                left: lastX - 6, top: lastY - 6,
+                child: _PulseDot(color: lineColor),
+              ),
+            if (_cursor != null) IgnorePointer(
+              child: CustomPaint(
+                size: size,
+                painter: _CrosshairPainter(
+                  cursor: _cursor!,
+                  plotRect: plotRect,
+                  bars: bars,
+                  minY: minY, maxY: maxY,
+                  accent: lineColor,
+                ),
+              ),
+            ),
+          ]),
         ),
-      ),
-      duration: const Duration(milliseconds: 250),
+      );
+    });
+  }
+}
+
+// Live "tick" indicator — soft pulsing halo at the latest data point.
+class _PulseDot extends StatefulWidget {
+  final Color color;
+  const _PulseDot({required this.color});
+  @override
+  State<_PulseDot> createState() => _PulseDotState();
+}
+
+class _PulseDotState extends State<_PulseDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
+  }
+  @override
+  void dispose() { _ctrl.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, __) {
+        final t = _ctrl.value;
+        return SizedBox(
+          width: 12, height: 12,
+          child: Stack(alignment: Alignment.center, children: [
+            // Outward expanding halo
+            Container(
+              width:  12 * (0.4 + t * 0.6),
+              height: 12 * (0.4 + t * 0.6),
+              decoration: BoxDecoration(shape: BoxShape.circle,
+                color: widget.color.withOpacity(0.40 * (1 - t))),
+            ),
+            // Solid dot
+            Container(
+              width: 6, height: 6,
+              decoration: BoxDecoration(shape: BoxShape.circle,
+                color: widget.color,
+                boxShadow: [BoxShadow(color: widget.color.withOpacity(0.6),
+                    blurRadius: 4)]),
+            ),
+          ]),
+        );
+      },
     );
   }
 }
+
+// Broker-grade crosshair overlay. Renders:
+//   1. Dashed vertical line at cursor.x (clamped to plot)
+//   2. Dashed horizontal line at cursor.y (clamped to plot)
+//   3. Accent-colored price pill flush against the right axis
+//   4. Accent-colored date pill on the bottom axis
+//   5. Highlight halo at the data point (vertical-line × line intersection)
+class _CrosshairPainter extends CustomPainter {
+  final Offset cursor;
+  final Rect plotRect;
+  final List<Candle> bars;
+  final double minY, maxY;
+  final Color accent;
+  _CrosshairPainter({
+    required this.cursor, required this.plotRect, required this.bars,
+    required this.minY, required this.maxY, required this.accent,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (!plotRect.contains(cursor)) return;
+    final t = (cursor.dx - plotRect.left) / plotRect.width;
+    final i = (t * (bars.length - 1)).round().clamp(0, bars.length - 1);
+    final b = bars[i];
+
+    // Snap vertical line to the actual data bar (not the raw cursor)
+    // so the crosshair aligns with the bar under the cursor.
+    final x = plotRect.left + (i / (bars.length - 1)) * plotRect.width;
+    final y = plotRect.top  + (1 - (b.close - minY) / (maxY - minY)) * plotRect.height;
+
+    final pCross = Paint()
+      ..color = AppColors.accent.withOpacity(0.70)
+      ..strokeWidth = 1;
+    _dashedV(canvas, x, plotRect.top,  plotRect.bottom, pCross);
+    _dashedH(canvas, y, plotRect.left, plotRect.right,  pCross);
+
+    // Highlight halo at the data point
+    canvas.drawCircle(Offset(x, y), 8,
+      Paint()..color = accent.withOpacity(0.18));
+    canvas.drawCircle(Offset(x, y), 4,
+      Paint()..color = accent);
+    canvas.drawCircle(Offset(x, y), 4,
+      Paint()..color = AppColors.bg
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6);
+
+    // Price pill — right axis, vertically aligned to y
+    _drawPill(canvas,
+      text: '₹${b.close.toStringAsFixed(2)}',
+      anchor: Offset(plotRect.right + 2, y),
+      align: _PillAlign.right,
+      bg: AppColors.accent,
+      fg: Colors.white,
+      fontFamily: 'DMMono',
+    );
+
+    // Date pill — bottom axis, horizontally aligned to x
+    final dt = DateTime.fromMillisecondsSinceEpoch(b.timeSec * 1000, isUtc: false);
+    final fmt = bars.length > 200
+        ? DateFormat('d MMM yy')
+        : DateFormat('d MMM');
+    _drawPill(canvas,
+      text: fmt.format(dt),
+      anchor: Offset(x, plotRect.bottom + 2),
+      align: _PillAlign.bottom,
+      bg: AppColors.accent,
+      fg: Colors.white,
+      fontFamily: 'DMSans',
+    );
+  }
+
+  void _dashedV(Canvas c, double x, double y1, double y2, Paint p) {
+    const dash = 4.0, gap = 4.0;
+    double y = y1;
+    while (y < y2) {
+      final end = math.min(y + dash, y2);
+      c.drawLine(Offset(x, y), Offset(x, end), p);
+      y += dash + gap;
+    }
+  }
+  void _dashedH(Canvas c, double y, double x1, double x2, Paint p) {
+    const dash = 4.0, gap = 4.0;
+    double x = x1;
+    while (x < x2) {
+      final end = math.min(x + dash, x2);
+      c.drawLine(Offset(x, y), Offset(end, y), p);
+      x += dash + gap;
+    }
+  }
+  void _drawPill(Canvas c, {
+    required String text,
+    required Offset anchor,
+    required _PillAlign align,
+    required Color bg, required Color fg, required String fontFamily,
+  }) {
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: TextStyle(
+        fontFamily: fontFamily, fontSize: 10, fontWeight: FontWeight.w700,
+        color: fg)),
+      textDirection: ui.TextDirection.ltr,
+    )..layout();
+    const padX = 5.0, padY = 2.5;
+    final w = tp.width + padX * 2;
+    final h = tp.height + padY * 2;
+    Rect r;
+    switch (align) {
+      case _PillAlign.right:
+        r = Rect.fromLTWH(anchor.dx, anchor.dy - h / 2, w, h);
+        break;
+      case _PillAlign.bottom:
+        r = Rect.fromLTWH(anchor.dx - w / 2, anchor.dy, w, h);
+        break;
+    }
+    c.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(3)),
+        Paint()..color = bg);
+    tp.paint(c, Offset(r.left + padX, r.top + padY));
+  }
+
+  @override
+  bool shouldRepaint(covariant _CrosshairPainter old) =>
+    old.cursor != cursor || old.bars != bars ||
+    old.minY != minY || old.maxY != maxY;
+}
+
+enum _PillAlign { right, bottom }
 
 // ═══════════════════════════════════════════════════════════════
 //  Candlestick chart view (CustomPainter)
