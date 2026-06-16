@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/utils/formatters.dart';
@@ -1854,6 +1855,32 @@ class _DemoBanner extends ConsumerStatefulWidget {
 
 class _DemoBannerState extends ConsumerState<_DemoBanner> {
   bool _loading = false;
+
+  // Auto-load demo data the FIRST time a user lands here with an empty
+  // account. Without this, brand-new users hit the home screen and see a
+  // sea of zeros with a tiny "Load demo" CTA — many never tap it and
+  // bounce. SharedPreferences gate ensures we never auto-load twice
+  // even if the user later wipes their data (they can still manual-tap).
+  static const _kAutoLoadKey = 'demo_auto_loaded_v1';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoLoad());
+  }
+
+  Future<void> _maybeAutoLoad() async {
+    if (!mounted) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(_kAutoLoadKey) == true) return;
+      await prefs.setBool(_kAutoLoadKey, true);
+      await _loadDemo();
+    } catch (_) {
+      // Best-effort. If SharedPreferences fails (rare), user can still
+      // tap the visible CTA manually.
+    }
+  }
 
   Future<void> _loadDemo() async {
     if (_loading) return;
