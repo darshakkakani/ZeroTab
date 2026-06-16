@@ -9,16 +9,20 @@
 // CORS:
 //   When running as Flutter Web (`kIsWeb`), browser security blocks
 //   direct cross-origin XHR to query1.finance.yahoo.com and
-//   api.mfapi.in. We transparently route through corsproxy.io, a free
-//   public CORS bouncer. On mobile dio bypasses CORS so the proxy is
-//   skipped. For production-grade reliability, swap this to a Supabase
-//   Edge Function that re-emits the same payload.
+//   api.mfapi.in. We route through the user's own Supabase Edge
+//   Function `/market-data`, which fetches the upstream URL server-
+//   side and re-emits the payload with permissive CORS headers. The
+//   Edge Function is deployed with --no-verify-jwt so no auth header
+//   is required. On mobile (non-web) dio bypasses CORS, so we call
+//   the upstream URL directly and skip the proxy entirely.
 
 import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+
+import '../../../core/constants/api_constants.dart';
 
 enum HoldingKind { stock, mf, etf, commodity }
 
@@ -133,57 +137,21 @@ class ChartDataService {
           ));
 
   // ── CORS handling ──────────────────────────────────────────────
-  // Flutter Web runs in a browser so every cross-origin XHR is gated
-  // by CORS. Yahoo and mfapi.in don't emit Access-Control-Allow-Origin,
-  // so direct calls from a Flutter Web build fail. We route through a
-  // chain of free public CORS proxies; if one 403s (rate-limited) or
-  // is being blocked by Yahoo we fall through to the next. The first
-  // proxy that succeeds for this session is cached so subsequent
-  // requests skip the dead ones.
+  // On Flutter Web we route every outbound request through the user's
+  // own Supabase Edge Function `/market-data`, which fetches the
+  // upstream URL server-side and re-emits the payload with permissive
+  // CORS headers. The function is deployed `--no-verify-jwt`, so no
+  // apikey / Authorization header is required.
   //
-  // For production-grade reliability swap any of these for your own
-  // Supabase Edge Function — same one-line change.
-  static const _proxies = <String Function(String)>[
-    _wrapCorsProxy,
-    _wrapAllOrigins,
-    _wrapCodetabs,
-  ];
-  static String _wrapCorsProxy(String url) =>
-      'https://corsproxy.io/?${Uri.encodeComponent(url)}';
-  static String _wrapAllOrigins(String url) =>
-      'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
-  static String _wrapCodetabs(String url) =>
-      'https://api.codetabs.com/v1/proxy/?quest=${Uri.encodeComponent(url)}';
-
-  // Index of the proxy that worked most recently. Sticky for the
-  // session so we don't burn a round-trip checking dead proxies.
-  int _stickyProxy = 0;
-
-  Future<Response<dynamic>> _getViaProxy(String url) async {
-    if (!kIsWeb) return _dio.get<dynamic>(url);
-
-    Object? lastErr;
-    final order = <int>[
-      _stickyProxy,
-      for (int i = 0; i < _proxies.length; i++) if (i != _stickyProxy) i,
-    ];
-    for (final idx in order) {
-      try {
-        final wrapped = _proxies[idx](url);
-        final resp = await _dio.get<dynamic>(wrapped);
-        // Treat 4xx in success as a failure for body extraction —
-        // some proxies return 200 with a JSON error envelope.
-        if (resp.statusCode != null &&
-            resp.statusCode! >= 200 && resp.statusCode! < 300) {
-          _stickyProxy = idx;
-          return resp;
-        }
-        lastErr = 'Proxy[$idx] status ${resp.statusCode}';
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-    throw ChartDataException('All proxies failed: $lastErr');
+  // On mobile (non-web) dio is not subject to CORS, so we just hit
+  // the upstream URL directly. If `SUPABASE_URL` is unset (e.g. a
+  // local dev build without --dart-define), we gracefully fall back
+  // to the direct URL too — useful for mobile-first iteration.
+  String _wrap(String url) {
+    if (!kIsWeb) return url;
+    final base = ApiConstants.supabaseUrl;
+    if (base.isEmpty) return url; // graceful — mobile fallback
+    return '$base/functions/v1/market-data?url=${Uri.encodeComponent(url)}';
   }
 
   String yahooTicker({
@@ -214,7 +182,7 @@ class ChartDataService {
     final url = 'https://query1.finance.yahoo.com/v8/finance/chart/$ticker'
         '?range=${tf.yfRange}&interval=${tf.yfInterval}'
         '&includePrePost=false&events=history';
-    final resp = await _getViaProxy(url);
+    final resp = await _dio.get<dynamic>(_wrap(url));
     final body = resp.data is String ? jsonDecode(resp.data as String) : resp.data;
     final err  = body['chart']?['error'];
     if (err != null) throw ChartDataException(err['description'] ?? 'Yahoo error');
@@ -259,7 +227,7 @@ class ChartDataService {
   }) async {
     if (schemeCode.isEmpty) throw ChartDataException('No scheme code');
     final url  = 'https://api.mfapi.in/mf/$schemeCode';
-    final resp = await _getViaProxy(url);
+    final resp = await _dio.get<dynamic>(_wrap(url));
     final body = resp.data is String ? jsonDecode(resp.data as String) : resp.data;
     final list = (body['data'] as List?) ?? const [];
     if (list.isEmpty) throw ChartDataException('No NAV history');
