@@ -1,9 +1,18 @@
 name: ⚡ Deploy Edge Functions
 
 # Auto-deploys Supabase Edge Functions whenever code under
-# supabase/functions/** changes. One-time setup: add the secret
-# SUPABASE_ACCESS_TOKEN at https://github.com/<you>/ZeroTab/settings/secrets
-# (token is created at https://supabase.com/dashboard/account/tokens).
+# supabase/functions/** changes.
+#
+# One-time setup (skip if already done):
+#   1. Create a Supabase access token at
+#      https://supabase.com/dashboard/account/tokens
+#   2. Add it as the secret SUPABASE_ACCESS_TOKEN at
+#      https://github.com/<you>/ZeroTab/settings/secrets/actions
+#   3. Ensure SUPABASE_URL secret is set to the full project URL
+#      e.g. https://jegpotribejwrclaiygy.supabase.co
+#
+# This workflow then deploys on every push to supabase/functions/**.
+
 on:
   push:
     branches: [main]
@@ -11,6 +20,12 @@ on:
       - 'supabase/functions/**'
       - '.github/workflows/edge-functions.yml'
   workflow_dispatch:
+
+# Set the access token at JOB level so every step inherits it.
+# This avoids the gotcha where setting it under `env:` on one step
+# doesn't carry over to later steps that also call the supabase CLI.
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
 jobs:
   deploy:
@@ -25,20 +40,47 @@ jobs:
         with:
           version: latest
 
-      - name: 🔗 Link to project
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      - name: 🔎 Verify required secrets are configured
         run: |
-          # SUPABASE_URL is something like https://jegpotribejwrclaiygy.supabase.co
-          # The project ref is the subdomain before the first dot.
-          PROJECT_REF=$(echo "${{ secrets.SUPABASE_URL }}" | sed -E 's|https?://([^.]+)\..*|\1|')
-          echo "Linking to project ref: $PROJECT_REF"
-          supabase link --project-ref "$PROJECT_REF"
+          missing=0
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "::error::Secret SUPABASE_ACCESS_TOKEN is not set."
+            echo "Create one at https://supabase.com/dashboard/account/tokens"
+            echo "Add it at /settings/secrets/actions in your GitHub repo."
+            missing=1
+          fi
+          if [ -z "${{ secrets.SUPABASE_URL }}" ]; then
+            echo "::error::Secret SUPABASE_URL is not set."
+            missing=1
+          fi
+          [ "$missing" = "0" ] || exit 1
+
+      - name: 🧮 Derive project ref from SUPABASE_URL
+        id: ref
+        run: |
+          # SUPABASE_URL is like https://<project-ref>.supabase.co
+          # Strip the protocol, then take everything before the first dot.
+          ref=$(echo "${{ secrets.SUPABASE_URL }}" | sed -E 's|^https?://||' | cut -d. -f1)
+          if [ -z "$ref" ]; then
+            echo "::error::Could not derive project ref from SUPABASE_URL"
+            exit 1
+          fi
+          echo "Project ref: $ref"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
       - name: 🚀 Deploy market-data function
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          supabase functions deploy market-data --no-verify-jwt
-          echo "✅ Deployed market-data — callable at:"
+          # We deploy without `supabase link` — link writes to .supabase/
+          # and can prompt for a DB password in some CLI versions, which
+          # hangs in non-interactive CI. Passing --project-ref directly
+          # to `functions deploy` is the canonical headless path.
+          supabase functions deploy market-data \
+            --project-ref "${{ steps.ref.outputs.ref }}" \
+            --no-verify-jwt
+
+          echo ""
+          echo "✅ Deployed. The function is now live at:"
           echo "   ${{ secrets.SUPABASE_URL }}/functions/v1/market-data"
+          echo ""
+          echo "Smoke test:"
+          echo "   curl '${{ secrets.SUPABASE_URL }}/functions/v1/market-data?url=https%3A%2F%2Fquery1.finance.yahoo.com%2Fv8%2Ffinance%2Fchart%2FRELIANCE.NS%3Frange%3D1d%26interval%3D1m'"
