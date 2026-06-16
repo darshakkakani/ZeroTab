@@ -136,22 +136,70 @@ class ChartDataService {
             },
           ));
 
-  // ── CORS handling ──────────────────────────────────────────────
-  // On Flutter Web we route every outbound request through the user's
-  // own Supabase Edge Function `/market-data`, which fetches the
-  // upstream URL server-side and re-emits the payload with permissive
-  // CORS headers. The function is deployed `--no-verify-jwt`, so no
-  // apikey / Authorization header is required.
+  // ── CORS handling — two-tier fallback ──────────────────────────
   //
-  // On mobile (non-web) dio is not subject to CORS, so we just hit
-  // the upstream URL directly. If `SUPABASE_URL` is unset (e.g. a
-  // local dev build without --dart-define), we gracefully fall back
-  // to the direct URL too — useful for mobile-first iteration.
-  String _wrap(String url) {
-    if (!kIsWeb) return url;
+  // Mobile (non-web): dio bypasses CORS entirely; we call the upstream
+  //                   directly with no proxy. This branch is the ground
+  //                   truth path and never breaks.
+  //
+  // Web (kIsWeb):
+  //   Tier 1 — User's own Supabase Edge Function `/market-data`. This is
+  //            the right long-term proxy: stable, cache-controlled,
+  //            free up to 500K invocations/month. But it only works if
+  //            the function is actually deployed on the user's project.
+  //   Tier 2 — r.jina.ai public reader. Free, CORS-friendly, no auth.
+  //            Used as automatic fallback whenever Tier 1 returns
+  //            404 (function not deployed yet), 5xx (function broken)
+  //            or throws (network blip).
+  //
+  // Once a tier works in a session we stick to it via _stickyTier so
+  // subsequent fetches don't waste a round-trip checking the dead one.
+  String _wrapEdgeFn(String url) {
     final base = ApiConstants.supabaseUrl;
-    if (base.isEmpty) return url; // graceful — mobile fallback
+    if (base.isEmpty) return '';
     return '$base/functions/v1/market-data?url=${Uri.encodeComponent(url)}';
+  }
+
+  String _wrapJina(String url) => 'https://r.jina.ai/$url';
+
+  int _stickyTier = 0; // 0 = Edge Function, 1 = Jina, set by first success
+
+  Future<Response<dynamic>> _fetch(String url) async {
+    if (!kIsWeb) return _dio.get<dynamic>(url);
+
+    // Build candidate proxies in priority order, skipping Edge Function
+    // when there's no SUPABASE_URL configured.
+    final candidates = <String>[];
+    final edgeFn = _wrapEdgeFn(url);
+    if (edgeFn.isNotEmpty) candidates.add(edgeFn);
+    candidates.add(_wrapJina(url));
+
+    // Reorder so the sticky tier is tried first.
+    if (_stickyTier == 1 && candidates.length > 1) {
+      final j = candidates.removeLast();
+      candidates.insert(0, j);
+    }
+
+    Object? lastErr;
+    for (int i = 0; i < candidates.length; i++) {
+      final candidate = candidates[i];
+      try {
+        final resp = await _dio.get<dynamic>(candidate,
+            options: Options(
+              // r.jina.ai sometimes returns text/plain instead of
+              // application/json — accept anything and parse later.
+              responseType: ResponseType.plain,
+              validateStatus: (s) => s != null && s >= 200 && s < 300,
+            ));
+        // Success: lock in this tier for the session.
+        _stickyTier = candidate.contains('r.jina.ai') ? 1 : 0;
+        return resp;
+      } catch (e) {
+        lastErr = e;
+        // Continue to next candidate.
+      }
+    }
+    throw ChartDataException('All chart-data proxies failed: $lastErr');
   }
 
   String yahooTicker({
@@ -182,7 +230,7 @@ class ChartDataService {
     final url = 'https://query1.finance.yahoo.com/v8/finance/chart/$ticker'
         '?range=${tf.yfRange}&interval=${tf.yfInterval}'
         '&includePrePost=false&events=history';
-    final resp = await _dio.get<dynamic>(_wrap(url));
+    final resp = await _fetch(url);
     final body = resp.data is String ? jsonDecode(resp.data as String) : resp.data;
     final err  = body['chart']?['error'];
     if (err != null) throw ChartDataException(err['description'] ?? 'Yahoo error');
@@ -227,7 +275,7 @@ class ChartDataService {
   }) async {
     if (schemeCode.isEmpty) throw ChartDataException('No scheme code');
     final url  = 'https://api.mfapi.in/mf/$schemeCode';
-    final resp = await _dio.get<dynamic>(_wrap(url));
+    final resp = await _fetch(url);
     final body = resp.data is String ? jsonDecode(resp.data as String) : resp.data;
     final list = (body['data'] as List?) ?? const [];
     if (list.isEmpty) throw ChartDataException('No NAV history');

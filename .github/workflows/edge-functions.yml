@@ -1,0 +1,44 @@
+name: ⚡ Deploy Edge Functions
+
+# Auto-deploys Supabase Edge Functions whenever code under
+# supabase/functions/** changes. One-time setup: add the secret
+# SUPABASE_ACCESS_TOKEN at https://github.com/<you>/ZeroTab/settings/secrets
+# (token is created at https://supabase.com/dashboard/account/tokens).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+      - '.github/workflows/edge-functions.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: ⚡ Deploy market-data
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🥑 Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: 🔗 Link to project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          # SUPABASE_URL is something like https://jegpotribejwrclaiygy.supabase.co
+          # The project ref is the subdomain before the first dot.
+          PROJECT_REF=$(echo "${{ secrets.SUPABASE_URL }}" | sed -E 's|https?://([^.]+)\..*|\1|')
+          echo "Linking to project ref: $PROJECT_REF"
+          supabase link --project-ref "$PROJECT_REF"
+
+      - name: 🚀 Deploy market-data function
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy market-data --no-verify-jwt
+          echo "✅ Deployed market-data — callable at:"
+          echo "   ${{ secrets.SUPABASE_URL }}/functions/v1/market-data"
