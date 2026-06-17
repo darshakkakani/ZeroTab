@@ -9,8 +9,8 @@ import '../../../shared/widgets/zt_card.dart';
 import '../../../shared/services/api_service.dart';
 import '../../../core/constants/api_constants.dart';
 import '../services/chart_data_service.dart';
+import '../widgets/discover_sections.dart';
 import 'holding_chart_screen.dart';
-import 'global_markets_screen.dart';
 
 // ── Enums ──────────────────────────────────────────────────
 enum _SortMode { value, gainPct, lossPct, name }
@@ -48,10 +48,19 @@ class InvestmentsScreen extends ConsumerStatefulWidget {
 }
 
 class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
+  // Outer tab controller — Portfolio · Discover · IPO (top-level IA).
+  late TabController _topCtrl;
+  // Inner tab controller — All · Stocks · MF · ETF · Commodity
+  // (asset-class strip nested inside the Portfolio tab body).
   late TabController _tabCtrl;
   _SortMode _sort = _SortMode.value;
   OverlayEntry? _toastOverlay;
+
+  // FocusNode for the Discover tab's sticky search field, owned at the
+  // screen level so the top app-bar's search icon (only visible on the
+  // Discover tab) can `.requestFocus()` to jump straight into typing.
+  final FocusNode _discoverFocus = FocusNode();
 
   // Prefetch is fire-and-forget — kick it off once per screen mount so
   // we don't hammer the network on every rebuild when other providers
@@ -65,11 +74,15 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
     super.initState();
     _tabCtrl = TabController(length: 5, vsync: this);
     _tabCtrl.addListener(() => setState(() {}));
+    _topCtrl = TabController(length: 3, vsync: this);
+    _topCtrl.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
+    _topCtrl.dispose();
     _tabCtrl.dispose();
+    _discoverFocus.dispose();
     _toastOverlay?.remove();
     super.dispose();
   }
@@ -382,162 +395,362 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
     final etfValue      = etfs.fold(0.0, (s,h) => s + (h.currentValue ?? 0));
     final commValue     = commodities.fold(0.0, (s,h) => s + (h.currentValue ?? 0));
 
+    // FAB is only meaningful on the Portfolio tab — Discover & IPO have
+    // no "add" affordance, so we hide it there to prevent collision
+    // with the search field and to keep the IPO surface clean.
+    final showFab = _topCtrl.index == 0;
+
     return Scaffold(
       backgroundColor: AppColors.bg,
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 60),
-        child: _UniformFAB(onTap: _showAdd),
-      ),
+      floatingActionButton: showFab
+          ? Padding(
+              padding: const EdgeInsets.only(bottom: 60),
+              child: _UniformFAB(onTap: _showAdd),
+            )
+          : null,
       body: SafeArea(
         child: Column(children: [
-          // ── Header ──────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-            child: Row(children: [
-              const Expanded(
-                child: Text('Portfolio', style: TextStyle(
-                  fontFamily: 'DMSans', fontSize: 24, fontWeight: FontWeight.w700,
-                  letterSpacing: -0.8, color: AppColors.text)),
-              ),
-              _HeaderBtn(icon: Icons.refresh_rounded, onTap: _refresh),
-            ]),
-          ),
-          const SizedBox(height: 14),
-
-          // ── Grand Portfolio Hero ─────────────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: _GrandHero(
-              totalValue: totalValue,
-              totalInvested: totalInvested,
-              totalGain: totalGain,
-              totalGainPct: totalGainPct,
-              positions: allItems.length,
-              stocksValue: stocksValue,
-              mfValue: mfValue,
-              etfValue: etfValue,
-              commValue: commValue,
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // ── Tab bar (underline style) ────────────────────────
-          Container(
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: AppColors.border, width: 1))),
-            child: TabBar(
-              controller: _tabCtrl,
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              indicatorColor: AppColors.accent,
-              indicatorWeight: 2.5,
-              indicatorSize: TabBarIndicatorSize.label,
-              labelColor: AppColors.text,
-              unselectedLabelColor: AppColors.text3,
-              labelStyle: const TextStyle(fontFamily: 'DMSans', fontSize: 13, fontWeight: FontWeight.w600),
-              unselectedLabelStyle: const TextStyle(fontFamily: 'DMSans', fontSize: 13, fontWeight: FontWeight.w400),
-              dividerColor: Colors.transparent,
-              tabs: [
-                Tab(text: 'All  (${allItems.length})'),
-                Tab(text: 'Stocks  (${stocks.length})'),
-                Tab(text: 'MF  (${mf.length})'),
-                Tab(text: 'ETF  (${etfs.length})'),
-                Tab(text: 'Commodity  (${commodities.length})'),
-              ],
-            ),
-          ),
-
-          // ── Sort chips (hidden on All overview tab) ──────────
-          if (_currentTab != _AssetTab.all) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 28,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                children: [
-                  _SortChip('Value',  _SortMode.value,   _sort, (m) => setState(() => _sort = m)),
-                  _SortChip('Gain %', _SortMode.gainPct, _sort, (m) => setState(() => _sort = m)),
-                  _SortChip('Loss %', _SortMode.lossPct, _sort, (m) => setState(() => _sort = m)),
-                  _SortChip('Name',   _SortMode.name,    _sort, (m) => setState(() => _sort = m)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-          ] else
-            const SizedBox(height: 8),
-
-          // ── Tab views ────────────────────────────────────────
+          // ── Top app-bar: "Investments" + per-tab context icon ──
+          _buildTopAppBar(),
+          // ── Outer TabBar: Portfolio · Discover · IPO ──
+          _buildTopTabBar(),
+          // ── Outer TabBarView ──
           Expanded(
             child: TabBarView(
-              controller: _tabCtrl,
+              controller: _topCtrl,
+              // The Portfolio body owns horizontal swipes via its
+              // nested asset-class TabBarView, so we disable swipe on
+              // the outer view to avoid gesture conflicts.
+              physics: const NeverScrollableScrollPhysics(),
               children: [
-                // ── All tab (AngelOne-style section overview) ──
-                _AllTabContent(
-                  stocks:      stocks,
-                  mfHoldings:  mf,
-                  etfs:        etfs,
-                  commodities: commodities,
-                  onAdd:       _showAdd,
-                  onSwitchTab: (i) => _tabCtrl.animateTo(i),
-                  onRefresh: () async {
-                    ref.invalidate(stockHoldingsProvider);
-                    ref.invalidate(mfHoldingsProvider);
-                    ref.invalidate(etfHoldingsProvider);
-                    ref.invalidate(commodityHoldingsProvider);
-                  },
+                _buildPortfolioTab(
+                  stocks: stocks, mf: mf, etfs: etfs, commodities: commodities,
+                  allItems: allItems,
+                  totalValue: totalValue, totalInvested: totalInvested,
+                  totalGain: totalGain, totalGainPct: totalGainPct,
+                  stocksValue: stocksValue, mfValue: mfValue,
+                  etfValue: etfValue, commValue: commValue,
                 ),
-                // ── Stocks tab ──
-                _TypeTabContent(
-                  holdings: _sorted(stocks),
-                  type: _HoldingType.stock,
-                  emptyIcon: Icons.show_chart_rounded,
-                  emptyTitle: 'No stock positions',
-                  emptySubtitle: 'Track your NSE/BSE equity holdings',
-                  onAdd: _showAdd,
-                  onDelete: _deleteHolding,
-                  onRefresh: () async => ref.invalidate(stockHoldingsProvider),
-                  extraSection: const _USStubCard(),
-                ),
-                // ── MF tab ──
-                _TypeTabContent(
-                  holdings: _sorted(mf),
-                  type: _HoldingType.mf,
-                  emptyIcon: Icons.pie_chart_outline_rounded,
-                  emptyTitle: 'No mutual fund holdings',
-                  emptySubtitle: 'Add MF holdings manually or via CAS upload',
-                  onAdd: _showAdd,
-                  onDelete: _deleteHolding,
-                  onRefresh: () async => ref.invalidate(mfHoldingsProvider),
-                ),
-                // ── ETF tab ──
-                _TypeTabContent(
-                  holdings: _sorted(etfs),
-                  type: _HoldingType.etf,
-                  emptyIcon: Icons.analytics_outlined,
-                  emptyTitle: 'No ETF positions',
-                  emptySubtitle: 'Track NIFTYBEES, GOLDBEES and other NSE ETFs',
-                  onAdd: _showAdd,
-                  onDelete: _deleteHolding,
-                  onRefresh: () async => ref.invalidate(etfHoldingsProvider),
-                ),
-                // ── Commodity tab ──
-                _TypeTabContent(
-                  holdings: _sorted(commodities),
-                  type: _HoldingType.commodity,
-                  emptyIcon: Icons.diamond_outlined,
-                  emptyTitle: 'No commodity positions',
-                  emptySubtitle: 'Track Gold, Silver, Crude Oil and other MCX commodities',
-                  onAdd: _showAdd,
-                  onDelete: _deleteHolding,
-                  onRefresh: () async => ref.invalidate(commodityHoldingsProvider),
-                ),
+                _DiscoverTabContent(searchFocusNode: _discoverFocus),
+                const _IpoTabContent(),
               ],
             ),
           ),
         ]),
       ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  //  Top app-bar — "Investments" title + per-tab trailing icon.
+  //  Trailing icon switches on the active outer tab:
+  //    Portfolio → refresh (existing handler)
+  //    Discover  → search (focuses the Discover sticky search field)
+  //    IPO       → no icon
+  // ─────────────────────────────────────────────────────────────
+  Widget _buildTopAppBar() {
+    Widget? trailing;
+    switch (_topCtrl.index) {
+      case 0:
+        trailing = _HeaderBtn(icon: Icons.refresh_rounded, onTap: _refresh);
+      case 1:
+        trailing = _HeaderBtn(
+          icon: Icons.search_rounded,
+          onTap: () => _discoverFocus.requestFocus(),
+        );
+      case 2:
+      default:
+        trailing = null;
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: Row(children: [
+        const Expanded(
+          child: Text('Investments', style: TextStyle(
+            fontFamily: 'DMSans', fontSize: 22, fontWeight: FontWeight.w700,
+            letterSpacing: -0.7, color: AppColors.text)),
+        ),
+        if (trailing != null) trailing,
+      ]),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  //  Outer TabBar — Portfolio · Discover · IPO. Sticky directly
+  //  below the app-bar, equal-width tabs, underline indicator.
+  // ─────────────────────────────────────────────────────────────
+  Widget _buildTopTabBar() => Padding(
+    padding: const EdgeInsets.only(top: 8),
+    child: Container(
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.border, width: 1))),
+      child: TabBar(
+        controller: _topCtrl,
+        indicatorColor: AppColors.accent,
+        indicatorWeight: 2.5,
+        indicatorSize: TabBarIndicatorSize.label,
+        labelColor: AppColors.text,
+        unselectedLabelColor: AppColors.text2,
+        labelStyle: const TextStyle(fontFamily: 'DMSans', fontSize: 13.5, fontWeight: FontWeight.w600),
+        unselectedLabelStyle: const TextStyle(fontFamily: 'DMSans', fontSize: 13.5, fontWeight: FontWeight.w500),
+        dividerColor: Colors.transparent,
+        tabs: const [
+          Tab(text: 'Portfolio'),
+          Tab(text: 'Discover'),
+          Tab(text: 'IPO'),
+        ],
+      ),
+    ),
+  );
+
+  // ─────────────────────────────────────────────────────────────
+  //  Portfolio tab body — _GrandHero, asset-class nested TabBar,
+  //  sort chips, and holdings TabBarView. Unchanged from the
+  //  pre-refactor layout except the embedded _USStubCard is gone
+  //  (Discover is now a peer tab).
+  // ─────────────────────────────────────────────────────────────
+  Widget _buildPortfolioTab({
+    required List<MFHoldingModel> stocks,
+    required List<MFHoldingModel> mf,
+    required List<MFHoldingModel> etfs,
+    required List<MFHoldingModel> commodities,
+    required List<MFHoldingModel> allItems,
+    required double totalValue,
+    required double totalInvested,
+    required double totalGain,
+    required double totalGainPct,
+    required double stocksValue,
+    required double mfValue,
+    required double etfValue,
+    required double commValue,
+  }) {
+    return Column(children: [
+      const SizedBox(height: 12),
+
+      // ── Grand Portfolio Hero ─────────────────────────────
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: _GrandHero(
+          totalValue: totalValue,
+          totalInvested: totalInvested,
+          totalGain: totalGain,
+          totalGainPct: totalGainPct,
+          positions: allItems.length,
+          stocksValue: stocksValue,
+          mfValue: mfValue,
+          etfValue: etfValue,
+          commValue: commValue,
+        ),
+      ),
+      const SizedBox(height: 14),
+
+      // ── Asset-class nested TabBar (underline style) ──────
+      Container(
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppColors.border, width: 1))),
+        child: TabBar(
+          controller: _tabCtrl,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          indicatorColor: AppColors.accent,
+          indicatorWeight: 2.5,
+          indicatorSize: TabBarIndicatorSize.label,
+          labelColor: AppColors.text,
+          unselectedLabelColor: AppColors.text3,
+          labelStyle: const TextStyle(fontFamily: 'DMSans', fontSize: 13, fontWeight: FontWeight.w600),
+          unselectedLabelStyle: const TextStyle(fontFamily: 'DMSans', fontSize: 13, fontWeight: FontWeight.w400),
+          dividerColor: Colors.transparent,
+          tabs: [
+            Tab(text: 'All  (${allItems.length})'),
+            Tab(text: 'Stocks  (${stocks.length})'),
+            Tab(text: 'MF  (${mf.length})'),
+            Tab(text: 'ETF  (${etfs.length})'),
+            Tab(text: 'Commodity  (${commodities.length})'),
+          ],
+        ),
+      ),
+
+      // ── Sort chips (hidden on All overview tab) ──────────
+      if (_currentTab != _AssetTab.all) ...[
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 28,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            children: [
+              _SortChip('Value',  _SortMode.value,   _sort, (m) => setState(() => _sort = m)),
+              _SortChip('Gain %', _SortMode.gainPct, _sort, (m) => setState(() => _sort = m)),
+              _SortChip('Loss %', _SortMode.lossPct, _sort, (m) => setState(() => _sort = m)),
+              _SortChip('Name',   _SortMode.name,    _sort, (m) => setState(() => _sort = m)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+      ] else
+        const SizedBox(height: 8),
+
+      // ── Tab views ────────────────────────────────────────
+      Expanded(
+        child: TabBarView(
+          controller: _tabCtrl,
+          children: [
+            // ── All tab (AngelOne-style section overview) ──
+            _AllTabContent(
+              stocks:      stocks,
+              mfHoldings:  mf,
+              etfs:        etfs,
+              commodities: commodities,
+              onAdd:       _showAdd,
+              onSwitchTab: (i) => _tabCtrl.animateTo(i),
+              onRefresh: () async {
+                ref.invalidate(stockHoldingsProvider);
+                ref.invalidate(mfHoldingsProvider);
+                ref.invalidate(etfHoldingsProvider);
+                ref.invalidate(commodityHoldingsProvider);
+              },
+            ),
+            // ── Stocks tab ──
+            //
+            // The legacy _USStubCard ("Explore Global Markets") that used
+            // to live here has been removed — the Discover top-level tab
+            // is its peer replacement, one tap away on the outer TabBar.
+            _TypeTabContent(
+              holdings: _sorted(stocks),
+              type: _HoldingType.stock,
+              emptyIcon: Icons.show_chart_rounded,
+              emptyTitle: 'No stock positions',
+              emptySubtitle: 'Track your NSE/BSE equity holdings',
+              onAdd: _showAdd,
+              onDelete: _deleteHolding,
+              onRefresh: () async => ref.invalidate(stockHoldingsProvider),
+            ),
+            // ── MF tab ──
+            _TypeTabContent(
+              holdings: _sorted(mf),
+              type: _HoldingType.mf,
+              emptyIcon: Icons.pie_chart_outline_rounded,
+              emptyTitle: 'No mutual fund holdings',
+              emptySubtitle: 'Add MF holdings manually or via CAS upload',
+              onAdd: _showAdd,
+              onDelete: _deleteHolding,
+              onRefresh: () async => ref.invalidate(mfHoldingsProvider),
+            ),
+            // ── ETF tab ──
+            _TypeTabContent(
+              holdings: _sorted(etfs),
+              type: _HoldingType.etf,
+              emptyIcon: Icons.analytics_outlined,
+              emptyTitle: 'No ETF positions',
+              emptySubtitle: 'Track NIFTYBEES, GOLDBEES and other NSE ETFs',
+              onAdd: _showAdd,
+              onDelete: _deleteHolding,
+              onRefresh: () async => ref.invalidate(etfHoldingsProvider),
+            ),
+            // ── Commodity tab ──
+            _TypeTabContent(
+              holdings: _sorted(commodities),
+              type: _HoldingType.commodity,
+              emptyIcon: Icons.diamond_outlined,
+              emptyTitle: 'No commodity positions',
+              emptySubtitle: 'Track Gold, Silver, Crude Oil and other MCX commodities',
+              onAdd: _showAdd,
+              onDelete: _deleteHolding,
+              onRefresh: () async => ref.invalidate(commodityHoldingsProvider),
+            ),
+          ],
+        ),
+      ),
+    ]);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Discover tab content — wraps the reusable DiscoverSections
+//  widget. Kept as a tiny ConsumerStatefulWidget with
+//  AutomaticKeepAliveClientMixin so the search field state and
+//  loaded carousel quotes survive swipes between top tabs.
+// ─────────────────────────────────────────────────────────────
+class _DiscoverTabContent extends StatefulWidget {
+  final FocusNode searchFocusNode;
+  const _DiscoverTabContent({required this.searchFocusNode});
+
+  @override
+  State<_DiscoverTabContent> createState() => _DiscoverTabContentState();
+}
+
+class _DiscoverTabContentState extends State<_DiscoverTabContent>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return DiscoverSections(searchFocusNode: widget.searchFocusNode);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  IPO tab content — placeholder for now. Reuses the in-package
+//  IpoPlaceholder widget plus four disabled segmented chips
+//  (Mainboard · SME · Buyback · GMP). No FAB, no search icon.
+// ─────────────────────────────────────────────────────────────
+class _IpoTabContent extends StatelessWidget {
+  const _IpoTabContent();
+
+  static const _segments = ['Mainboard', 'SME', 'Buyback', 'GMP'];
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(0, 16, 0, 100),
+      children: [
+        // ── Hero strip ────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('IPOs', style: TextStyle(
+                fontFamily: 'DMSans', fontSize: 22,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.6, color: AppColors.text)),
+              const SizedBox(height: 4),
+              const Text(
+                'Mainboard, SME, Buyback & GMP — coming soon',
+                style: TextStyle(fontFamily: 'DMSans', fontSize: 12.5,
+                  color: AppColors.text3, height: 1.4)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        // ── Segmented chips (visual only, no taps wired) ──
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(children: List.generate(_segments.length, (i) {
+            return Expanded(
+              child: Container(
+                margin: EdgeInsets.only(right: i == _segments.length - 1 ? 0 : 6),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.bg2,
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                  border: Border.all(color: AppColors.border),
+                ),
+                alignment: Alignment.center,
+                child: Text(_segments[i], style: const TextStyle(
+                  fontFamily: 'DMSans', fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.text3)),
+              ),
+            );
+          })),
+        ),
+        // ── Placeholder card ──────────────────────────────
+        const IpoPlaceholder(),
+      ],
     );
   }
 }
@@ -942,9 +1155,10 @@ class _AllTabContent extends StatelessWidget {
                           ),
                         ],
 
-                        // ── US Stocks stub below sections ─────────────
-                        const SizedBox(height: 14),
-                        const _USStubCard(),
+                        // Note: the legacy "Explore Global Markets" stub
+                        // card that used to render here has been deleted
+                        // — Discover is now a top-level tab on the outer
+                        // TabBar (Portfolio · Discover · IPO).
                       ],
                     ),
             ),
@@ -1641,112 +1855,12 @@ class _EmptyState extends StatelessWidget {
   );
 }
 
-// ── Explore Global Markets CTA — opens the Discover screen ─────
-//
-// Replaces the legacy "US Stocks — Coming Soon" placeholder. Now an
-// active entry point to GlobalMarketsScreen, which surfaces stocks,
-// ETFs, indices, forex and crypto across NSE, BSE, NASDAQ, NYSE,
-// LSE, Frankfurt, Tokyo, HKEX, Shanghai, plus a universal Yahoo-
-// powered search bar for any other symbol.
-class _USStubCard extends StatelessWidget {
-  const _USStubCard();
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: () => Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => const GlobalMarketsScreen(),
-    )),
-    child: Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [Color(0xFF1A1245), Color(0xFF0E0A24)],
-        ),
-        borderRadius: BorderRadius.circular(AppRadius.xl),
-        border: Border.all(color: AppColors.accent.withOpacity(0.30)),
-      ),
-      child: Row(children: [
-        Container(
-          width: 44, height: 44,
-          decoration: BoxDecoration(
-            color: AppColors.accent.withOpacity(0.14),
-            borderRadius: BorderRadius.circular(AppRadius.md),
-          ),
-          alignment: Alignment.center,
-          child: const Icon(Icons.travel_explore_rounded,
-              color: AppColors.accent, size: 22),
-        ),
-        const SizedBox(width: 14),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Explore Global Markets', style: TextStyle(
-            fontFamily: 'DMSans', fontSize: 14, fontWeight: FontWeight.w700,
-            color: AppColors.text)),
-          const SizedBox(height: 2),
-          const Text('US · EU · Japan · HK · Crypto · Forex · Indices',
-            style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
-                color: AppColors.text3)),
-        ])),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: AppColors.accent.withOpacity(0.14),
-            borderRadius: BorderRadius.circular(AppRadius.pill),
-            border: Border.all(color: AppColors.accent.withOpacity(0.35)),
-          ),
-          child: const Text('Open', style: TextStyle(
-            fontFamily: 'DMSans', fontSize: 10, fontWeight: FontWeight.w700,
-            color: AppColors.accent)),
-        ),
-      ]),
-    ),
-  );
-}
-
-class _USStubSheet extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-    decoration: BoxDecoration(
-      color: AppColors.bg2,
-      borderRadius: BorderRadius.circular(AppRadius.xxl),
-      border: Border.all(color: AppColors.border2),
-    ),
-    padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-    child: Column(mainAxisSize: MainAxisSize.min, children: [
-      Center(child: Container(width: 36, height: 4,
-        decoration: BoxDecoration(color: AppColors.border2,
-          borderRadius: BorderRadius.circular(2)))),
-      const SizedBox(height: 24),
-      const Text('🇺🇸', style: TextStyle(fontSize: 48)),
-      const SizedBox(height: 16),
-      const Text('US Stocks — Coming Soon', style: TextStyle(
-        fontFamily: 'DMSans', fontSize: 18, fontWeight: FontWeight.w700,
-        color: AppColors.text)),
-      const SizedBox(height: 10),
-      const Text(
-        'We\'re working on US market integration.\nConnect your Vested or INDmoney account to track NASDAQ & NYSE stocks directly inside ZeroTab.',
-        textAlign: TextAlign.center,
-        style: TextStyle(fontFamily: 'DMSans', fontSize: 13, color: AppColors.text2, height: 1.6)),
-      const SizedBox(height: 20),
-      Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0x0F4F9DF7),
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          border: Border.all(color: AppColors.dataETF.withOpacity(0.2)),
-        ),
-        child: Row(children: [
-          const Icon(Icons.star_rounded, color: AppColors.dataETF, size: 16),
-          const SizedBox(width: 8),
-          const Expanded(child: Text('Apple · Tesla · Amazon · Google · Microsoft',
-            style: TextStyle(fontFamily: 'DMSans', fontSize: 12, color: AppColors.text2))),
-        ]),
-      ),
-      const SizedBox(height: 12),
-    ]),
-  );
-}
+// Note: the legacy _USStubCard ("Explore Global Markets" CTA) and
+// _USStubSheet ("US Stocks — Coming Soon" bottom sheet) widgets that
+// used to live here have been deleted as part of the new outer-tab IA
+// (Portfolio · Discover · IPO). The dedicated Discover top-level tab
+// is now the canonical entry point for global markets discovery — see
+// `lib/features/investments/widgets/discover_sections.dart`.
 
 // ── Add type chooser sheet ────────────────────────────────
 class _AddTypeChooserSheet extends StatelessWidget {
