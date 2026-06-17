@@ -10,6 +10,7 @@ import '../../../shared/services/api_service.dart';
 import '../../../core/constants/api_constants.dart';
 import '../services/chart_data_service.dart';
 import 'holding_chart_screen.dart';
+import 'global_markets_screen.dart';
 
 // ── Enums ──────────────────────────────────────────────────
 enum _SortMode { value, gainPct, lossPct, name }
@@ -1640,57 +1641,62 @@ class _EmptyState extends StatelessWidget {
   );
 }
 
-// ── US Stocks stub card ────────────────────────────────────
+// ── Explore Global Markets CTA — opens the Discover screen ─────
+//
+// Replaces the legacy "US Stocks — Coming Soon" placeholder. Now an
+// active entry point to GlobalMarketsScreen, which surfaces stocks,
+// ETFs, indices, forex and crypto across NSE, BSE, NASDAQ, NYSE,
+// LSE, Frankfurt, Tokyo, HKEX, Shanghai, plus a universal Yahoo-
+// powered search bar for any other symbol.
 class _USStubCard extends StatelessWidget {
   const _USStubCard();
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-    onTap: () => showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _USStubSheet(),
-    ),
+    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => const GlobalMarketsScreen(),
+    )),
     child: Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [Color(0xFF0E1F3A), Color(0xFF070E1C)],
+          colors: [Color(0xFF1A1245), Color(0xFF0E0A24)],
         ),
         borderRadius: BorderRadius.circular(AppRadius.xl),
-        border: Border.all(color: AppColors.dataETF.withOpacity(0.25)),
+        border: Border.all(color: AppColors.accent.withOpacity(0.30)),
       ),
       child: Row(children: [
         Container(
           width: 44, height: 44,
           decoration: BoxDecoration(
-            color: const Color(0x1A4F9DF7),
+            color: AppColors.accent.withOpacity(0.14),
             borderRadius: BorderRadius.circular(AppRadius.md),
           ),
           alignment: Alignment.center,
-          child: const Text('🇺🇸', style: TextStyle(fontSize: 22)),
+          child: const Icon(Icons.travel_explore_rounded,
+              color: AppColors.accent, size: 22),
         ),
         const SizedBox(width: 14),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('US Stocks', style: TextStyle(
-            fontFamily: 'DMSans', fontSize: 14, fontWeight: FontWeight.w600,
+          const Text('Explore Global Markets', style: TextStyle(
+            fontFamily: 'DMSans', fontSize: 14, fontWeight: FontWeight.w700,
             color: AppColors.text)),
           const SizedBox(height: 2),
-          const Text('Invest in Apple, Tesla, Google & more',
-            style: TextStyle(fontFamily: 'DMSans', fontSize: 11, color: AppColors.text3)),
+          const Text('US · EU · Japan · HK · Crypto · Forex · Indices',
+            style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
+                color: AppColors.text3)),
         ])),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: const Color(0x1A4F9DF7),
+            color: AppColors.accent.withOpacity(0.14),
             borderRadius: BorderRadius.circular(AppRadius.pill),
-            border: Border.all(color: AppColors.dataETF.withOpacity(0.3)),
+            border: Border.all(color: AppColors.accent.withOpacity(0.35)),
           ),
-          child: const Text('Coming Soon', style: TextStyle(
-            fontFamily: 'DMSans', fontSize: 10, fontWeight: FontWeight.w600,
-            color: AppColors.dataETF)),
+          child: const Text('Open', style: TextStyle(
+            fontFamily: 'DMSans', fontSize: 10, fontWeight: FontWeight.w700,
+            color: AppColors.accent)),
         ),
       ]),
     ),

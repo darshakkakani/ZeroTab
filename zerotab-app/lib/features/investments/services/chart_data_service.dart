@@ -585,6 +585,177 @@ class ChartDataService {
     for (final b in bars) { if (m == null || b.close < m) m = b.close; }
     return m;
   }
+
+  // ══════════════════════════════════════════════════════════════
+  //  GLOBAL DISCOVERY — symbol search + lightweight quote fetch
+  //  Powers the GlobalMarketsScreen (Discover tab).
+  // ══════════════════════════════════════════════════════════════
+
+  // 60-second TTL cache for quote lookups (per-card LTP fetches on
+  // the discover screen). Yahoo's /v8/chart returns the meta block we
+  // need on any timeframe — we use the cheapest (1d/15m).
+  final Map<String, _CachedQuote> _quoteCache = {};
+
+  /// Universal symbol search via Yahoo's `/v1/finance/search` endpoint.
+  /// Returns SearchResult objects covering every quote type Yahoo
+  /// recognises: EQUITY, ETF, INDEX, CRYPTOCURRENCY, CURRENCY,
+  /// MUTUALFUND, FUTURE. Routes through the same Edge Function proxy
+  /// as everything else.
+  Future<List<SearchResult>> searchSymbols(String query,
+      {int limit = 8}) async {
+    final q = query.trim();
+    if (q.isEmpty) return const [];
+    final encQ = Uri.encodeQueryComponent(q);
+    final url = 'https://query2.finance.yahoo.com/v1/finance/search'
+        '?q=$encQ&quotesCount=$limit&newsCount=0';
+    try {
+      final resp = await _fetch(url);
+      final body = resp.data is String
+          ? jsonDecode(resp.data as String) : resp.data;
+      final quotes = (body['quotes'] as List?) ?? const [];
+      final out = <SearchResult>[];
+      for (final raw in quotes) {
+        final m = raw as Map<String, dynamic>;
+        final sym = m['symbol'] as String?;
+        if (sym == null || sym.isEmpty) continue;
+        out.add(SearchResult(
+          symbol:    sym,
+          shortName: (m['shortname'] as String?) ?? sym,
+          longName:  (m['longname']  as String?),
+          exchange:  (m['exchange']  as String?) ?? '',
+          exchDisp:  (m['exchDisp']  as String?),
+          quoteType: (m['quoteType'] as String?) ?? 'EQUITY',
+          sector:    m['sector']   as String?,
+          industry:  m['industry'] as String?,
+        ));
+      }
+      return out;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Lightweight quote — just the meta block (price + day change +
+  /// 52-week range), no candles. 60-s in-memory cache because Discover
+  /// cards refresh together and we want to avoid hammering Yahoo for
+  /// the same ticker if the user scrolls back and forth.
+  Future<QuoteMeta?> fetchQuote(String yahooTicker) async {
+    final t = yahooTicker.trim();
+    if (t.isEmpty) return null;
+
+    final hit = _quoteCache[t];
+    final now = DateTime.now();
+    if (hit != null && now.difference(hit.fetchedAt).inSeconds < 60) {
+      return hit.meta;
+    }
+
+    final encTicker = Uri.encodeComponent(t);
+    final url = 'https://query1.finance.yahoo.com/v8/finance/chart/$encTicker'
+        '?range=1d&interval=15m';
+    try {
+      final resp = await _fetch(url);
+      final body = resp.data is String
+          ? jsonDecode(resp.data as String) : resp.data;
+      final result = (body['chart']?['result'] as List?)?.first;
+      if (result == null) return null;
+      final metaJson = result['meta'] as Map<String, dynamic>?;
+      if (metaJson == null) return null;
+      final meta = QuoteMeta.fromYahoo(metaJson);
+      _quoteCache[t] = _CachedQuote(meta: meta, fetchedAt: now);
+      return meta;
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+class _CachedQuote {
+  final QuoteMeta meta;
+  final DateTime fetchedAt;
+  const _CachedQuote({required this.meta, required this.fetchedAt});
+}
+
+/// One hit from Yahoo Finance's universal symbol search.
+class SearchResult {
+  final String symbol;        // Yahoo ticker, ready for fetchYahoo
+  final String shortName;     // Brief display name
+  final String? longName;     // Full company / instrument name
+  final String exchange;      // Raw exchange code (NMS, NSI, HKG, ...)
+  final String? exchDisp;     // Human-readable exchange ("NASDAQ", "BSE")
+  final String quoteType;     // EQUITY | ETF | INDEX | CRYPTOCURRENCY |
+                              // CURRENCY | MUTUALFUND | FUTURE
+  final String? sector;
+  final String? industry;
+
+  const SearchResult({
+    required this.symbol,
+    required this.shortName,
+    this.longName,
+    required this.exchange,
+    this.exchDisp,
+    required this.quoteType,
+    this.sector,
+    this.industry,
+  });
+
+  /// Maps an exchange code to a country/asset flag — used by the
+  /// Discover screen's per-card badge. Falls back to a quote-type emoji
+  /// when the exchange isn't recognised (e.g. CCC for crypto).
+  String get flag {
+    switch (exchange.toUpperCase()) {
+      case 'NSI': case 'BSE': case 'BOM': return '🇮🇳';
+      case 'NMS': case 'NYQ': case 'NCM':
+      case 'ASE': case 'NGM': case 'PCX': case 'PNK': return '🇺🇸';
+      case 'HKG': return '🇭🇰';
+      case 'TYO': case 'JPX': return '🇯🇵';
+      case 'LSE': case 'IOB': return '🇬🇧';
+      case 'GER': case 'FRA': case 'STU': case 'XETRA': case 'BER':
+        return '🇩🇪';
+      case 'PAR': return '🇫🇷';
+      case 'AMS': return '🇳🇱';
+      case 'MIL': return '🇮🇹';
+      case 'MCE': return '🇪🇸';
+      case 'EBS': case 'SWX': return '🇨🇭';
+      case 'CPH': return '🇩🇰';
+      case 'STO': return '🇸🇪';
+      case 'SHH': case 'SHZ': return '🇨🇳';
+      case 'TWO': case 'TAI': return '🇹🇼';
+      case 'KSC': case 'KOE': return '🇰🇷';
+      case 'ASX': return '🇦🇺';
+      case 'TOR': case 'TSX': return '🇨🇦';
+      case 'SAO': return '🇧🇷';
+      case 'MEX': return '🇲🇽';
+      case 'JNB': return '🇿🇦';
+      case 'SES': return '🇸🇬';
+      case 'KLS': return '🇲🇾';
+      case 'CCC': return '🪙'; // Crypto
+      case 'CCY': return '💱'; // Currency
+      default:
+        switch (quoteType.toUpperCase()) {
+          case 'CRYPTOCURRENCY': return '🪙';
+          case 'CURRENCY':       return '💱';
+          case 'INDEX':          return '📊';
+          case 'ETF':            return '📦';
+          case 'FUTURE':         return '🛢️';
+          case 'MUTUALFUND':     return '🏦';
+          default:               return '🌐';
+        }
+    }
+  }
+
+  /// Map exchange to a HoldingKind for routing into HoldingChartScreen.
+  /// Yahoo's quoteType is the most reliable signal.
+  HoldingKind get inferredKind {
+    switch (quoteType.toUpperCase()) {
+      case 'MUTUALFUND':     return HoldingKind.mf;
+      case 'ETF':            return HoldingKind.etf;
+      case 'CRYPTOCURRENCY':
+      case 'CURRENCY':
+      case 'INDEX':
+      case 'FUTURE':         return HoldingKind.commodity;
+      default:               return HoldingKind.stock;
+    }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────
