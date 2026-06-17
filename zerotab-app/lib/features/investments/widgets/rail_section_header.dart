@@ -181,7 +181,7 @@ class _RailSectionHeaderState extends State<RailSectionHeader>
           );
 
     final row = Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,

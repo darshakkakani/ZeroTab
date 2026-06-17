@@ -22,6 +22,7 @@
 // loop falls back to a static held-state painter (no ticker pulse).
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/theme/app_theme.dart';
@@ -233,7 +234,7 @@ class _BullRefreshIndicatorState extends State<BullRefreshIndicator>
                           children: [
                             CustomPaint(
                               size: const Size(double.infinity, 42),
-                              painter: _BullPainter(
+                              painter: _MarketPulsePainter(
                                 phase: _phase,
                                 dragValue: dragValue,
                                 loop: reduceMotion ? 0.5 : _loopCtrl.value,
@@ -267,85 +268,230 @@ class _BullRefreshIndicatorState extends State<BullRefreshIndicator>
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  _BullPainter — 5 candles + wicks, growth driven by dragValue,
-//  pulse driven by loopCtrl when in loading state.
-// ─────────────────────────────────────────────────────────────
-class _BullPainter extends CustomPainter {
+// ═══════════════════════════════════════════════════════════════
+//  _MarketPulsePainter — premium pull-to-refresh.
+//
+//  Draws an upward-trending stock chart that progressively reveals
+//  itself as the user pulls. Replaces the original 5-candle painter
+//  with something far more brand-aligned for a finance app:
+//
+//    • Smooth cubic sparkline through 9 control points (realistic
+//      "rally with a dip" shape — looks like an actual chart).
+//    • Soft accent-colored glow under the stroke (blurred 4 dp pass
+//      then a sharp 2.2 dp stroke on top).
+//    • Gradient fill under the line (accent → transparent), only
+//      from the leftmost point to the visible endpoint.
+//    • Glowing endpoint dot with a halo that BREATHES during the
+//      loading phase (sin-wave loop tied to the global loop ctrl).
+//    • An animated ↑ arrow appears above the endpoint when armed.
+//    • Error state swaps the line to red + draws an ✗ on the endpoint.
+//
+//  Phase behavior:
+//    • idle / dragging:  revealT = clamp(dragValue, 0, 1)
+//    • armed:            revealT = 1, vivid accent
+//    • loading:          revealT = 0.4 + 0.6 * loop (chart visibly
+//                        re-draws itself in a smooth loop)
+//    • complete:         revealT = 1, fades via parent opacity
+// ═══════════════════════════════════════════════════════════════
+class _MarketPulsePainter extends CustomPainter {
   final _IndicatorPhase phase;
   final double dragValue;
   final double loop;
   final bool errored;
 
-  _BullPainter({
+  _MarketPulsePainter({
     required this.phase,
     required this.dragValue,
     required this.loop,
     required this.errored,
   });
 
-  static const _bodyWidth = 6.0;
-  static const _gap = 4.0;
-  static const _maxHeights = <double>[18, 14, 26, 20, 32];
-  static const _baseHeight = 4.0;
+  // Normalized control points (x, y in [0..1]; y inverted so 0 = top).
+  // Shape: starts low-left, dips once for realism, rallies hard to top-right.
+  static const List<Offset> _chart = <Offset>[
+    Offset(0.00, 0.82),
+    Offset(0.12, 0.68),
+    Offset(0.24, 0.74),
+    Offset(0.36, 0.55),
+    Offset(0.50, 0.62),
+    Offset(0.64, 0.42),
+    Offset(0.78, 0.28),
+    Offset(0.90, 0.16),
+    Offset(1.00, 0.06),
+  ];
 
   @override
   void paint(Canvas canvas, Size size) {
-    final totalWidth = 5 * _bodyWidth + 4 * _gap;
-    final startX = (size.width - totalWidth) / 2;
-    final baseline = size.height - 6; // 6 dp from bottom (within painter area)
+    if (size.width <= 0 || size.height <= 0) return;
 
-    for (var i = 0; i < 5; i++) {
-      final colour = i.isEven
-          ? (errored ? AppColors.red : AppColors.green)
-          : (errored ? AppColors.red : AppColors.red);
-      // Heights per spec:
-      //   dragging: 4 + max[i] * clamp((v - 0.15*i) * 5, 0, 1)
-      double growT;
-      if (phase == _IndicatorPhase.dragging ||
-          phase == _IndicatorPhase.idle) {
-        growT = ((dragValue - 0.15 * i) * 5).clamp(0.0, 1.0);
-      } else if (phase == _IndicatorPhase.armed) {
-        growT = 1.0;
-      } else if (phase == _IndicatorPhase.loading) {
-        // Rightmost candle pulses, others hold.
-        if (i == 4) {
-          // Pulse between 24..32 of the 32-max scale → 0.75..1.0.
-          final pulse = 0.75 + 0.25 * loop;
-          growT = pulse;
-        } else {
-          growT = 1.0;
-        }
+    // Center the chart in a 220-dp wide box (or smaller on narrow phones).
+    final chartW = math.min(size.width - 24, 220.0);
+    if (chartW < 80) return;
+    final chartH = size.height - 12; // 6 dp top + 6 dp bottom breathing
+    final left = (size.width - chartW) / 2;
+    final top = 6.0;
+    final rect = Rect.fromLTWH(left, top, chartW, chartH);
+
+    // Compute how much of the chart to reveal in this frame.
+    final double revealT;
+    switch (phase) {
+      case _IndicatorPhase.idle:
+      case _IndicatorPhase.dragging:
+        revealT = dragValue.clamp(0.0, 1.0);
+        break;
+      case _IndicatorPhase.armed:
+        revealT = 1.0;
+        break;
+      case _IndicatorPhase.loading:
+        // Reveal eases in a smooth wave — chart appears to re-draw itself.
+        revealT = 0.45 + 0.55 * loop;
+        break;
+      case _IndicatorPhase.complete:
+        revealT = 1.0;
+        break;
+    }
+    if (revealT < 0.02) return;
+
+    // Build the visible point list. Anything past revealT gets clipped
+    // to the interpolated point on the last segment.
+    final pts = <Offset>[];
+    for (var i = 0; i < _chart.length; i++) {
+      final p = _chart[i];
+      if (p.dx <= revealT) {
+        pts.add(Offset(
+          rect.left + p.dx * rect.width,
+          rect.top  + p.dy * rect.height,
+        ));
       } else {
-        growT = 1.0;
+        // Interpolate the endpoint on the segment that crosses revealT.
+        if (i == 0) break;
+        final prev = _chart[i - 1];
+        final segT = (revealT - prev.dx) / (p.dx - prev.dx);
+        final iy   = prev.dy + (p.dy - prev.dy) * segT;
+        pts.add(Offset(
+          rect.left + revealT * rect.width,
+          rect.top  + iy      * rect.height,
+        ));
+        break;
       }
+    }
+    if (pts.length < 2) return;
 
-      final h = _baseHeight + _maxHeights[i] * growT;
-      final x = startX + i * (_bodyWidth + _gap);
-      final top = baseline - h;
-      final brightOpacity = phase == _IndicatorPhase.armed ? 1.0 : 0.92;
+    // Build a cubic-smoothed path through pts — gives the sparkline an
+    // organic, "drawn-by-hand" curvature instead of jagged polylines.
+    final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+    for (var i = 1; i < pts.length; i++) {
+      final p0 = pts[i - 1];
+      final p1 = pts[i];
+      final cp1 = Offset((p0.dx + p1.dx) / 2, p0.dy);
+      final cp2 = Offset((p0.dx + p1.dx) / 2, p1.dy);
+      path.cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, p1.dx, p1.dy);
+    }
 
-      final paint = Paint()..color = colour.withOpacity(brightOpacity);
-      // Body.
-      final body = RRect.fromRectAndRadius(
-        Rect.fromLTWH(x, top, _bodyWidth, h),
-        const Radius.circular(1),
-      );
-      canvas.drawRRect(body, paint);
-      // Wick — 1 dp wide centred above + below.
-      final wickPaint = Paint()
-        ..color = colour.withOpacity(brightOpacity * 0.6)
-        ..strokeWidth = 1.0
-        ..strokeCap = StrokeCap.round;
-      final cx = x + _bodyWidth / 2;
-      canvas.drawLine(Offset(cx, top - 3), Offset(cx, top), wickPaint);
-      canvas.drawLine(
-          Offset(cx, baseline), Offset(cx, baseline + 3), wickPaint);
+    // Brand color selection. Accent on success, red on error. Armed +
+    // loading get the fully saturated accent; pre-arm uses 70% opacity
+    // so the chart "lights up" at the threshold.
+    final lineColor = errored
+        ? AppColors.red
+        : (phase == _IndicatorPhase.armed || phase == _IndicatorPhase.loading
+            ? AppColors.accent
+            : AppColors.accent.withOpacity(0.70));
+
+    // ── Gradient fill below the line ──
+    final fillPath = Path.from(path)
+      ..lineTo(pts.last.dx, rect.bottom)
+      ..lineTo(pts.first.dx, rect.bottom)
+      ..close();
+    canvas.drawPath(fillPath, Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter, end: Alignment.bottomCenter,
+        colors: [
+          lineColor.withOpacity(0.34),
+          lineColor.withOpacity(0.00),
+        ],
+      ).createShader(rect));
+
+    // ── Soft glow under the stroke (blurred 4 dp) ──
+    canvas.drawPath(path, Paint()
+      ..color = lineColor.withOpacity(0.55)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4));
+
+    // ── Sharp stroke on top ──
+    canvas.drawPath(path, Paint()
+      ..color = lineColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round);
+
+    // ── Endpoint: halo + dot + inner-ring + (optional) arrow/X ──
+    final endX = pts.last.dx;
+    final endY = pts.last.dy;
+
+    double dotR = 3.5;
+    double haloR = 6.0;
+    double haloAlpha = 0.35;
+    if (phase == _IndicatorPhase.armed) {
+      dotR = 4.5;
+      haloR = 9.0;
+      haloAlpha = 0.50;
+    } else if (phase == _IndicatorPhase.loading) {
+      // sin-wave breathing pulse
+      final b = (1 + math.sin(loop * 2 * math.pi)) / 2; // 0..1
+      dotR = 4.0 + b * 1.6;
+      haloR = 8.0 + b * 6.0;
+      haloAlpha = 0.28 + b * 0.32;
+    }
+    canvas.drawCircle(Offset(endX, endY), haloR,
+        Paint()..color = lineColor.withOpacity(haloAlpha));
+    canvas.drawCircle(Offset(endX, endY), dotR,
+        Paint()..color = lineColor);
+    canvas.drawCircle(Offset(endX, endY), dotR,
+        Paint()
+          ..color = Colors.white.withOpacity(0.75)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1);
+
+    // ── Armed: ↑ arrow above the endpoint ──
+    if (phase == _IndicatorPhase.armed && !errored) {
+      final ax = endX;
+      final ay = endY - 10;
+      final arrow = Path()
+        ..moveTo(ax, ay - 6)
+        ..lineTo(ax - 4, ay - 1)
+        ..moveTo(ax, ay - 6)
+        ..lineTo(ax + 4, ay - 1)
+        ..moveTo(ax, ay - 6)
+        ..lineTo(ax, ay + 2);
+      canvas.drawPath(arrow, Paint()
+        ..color = lineColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round);
+    }
+
+    // ── Errored complete: ✗ over the endpoint ──
+    if (errored && phase == _IndicatorPhase.complete) {
+      final x = Path()
+        ..moveTo(endX - 4, endY - 4)
+        ..lineTo(endX + 4, endY + 4)
+        ..moveTo(endX + 4, endY - 4)
+        ..lineTo(endX - 4, endY + 4);
+      canvas.drawPath(x, Paint()
+        ..color = AppColors.red
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6
+        ..strokeCap = StrokeCap.round);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _BullPainter old) =>
+  bool shouldRepaint(covariant _MarketPulsePainter old) =>
       old.phase != phase ||
       old.dragValue != dragValue ||
       old.loop != loop ||

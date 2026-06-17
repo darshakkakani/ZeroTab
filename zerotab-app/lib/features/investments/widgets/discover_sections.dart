@@ -399,9 +399,11 @@ class _Rail extends StatelessWidget {
             final available = c.maxWidth - leftPad;
             final cardW = cardWidthOverride ??
                 ((available - gap) / 2.4).clamp(140.0, 184.0);
-            // Card height: rail variant default is 112 dp. Outer slot
-            // adds a couple of dp for shadow / focus-ring rhythm.
-            const cardH = 116.0;
+            // Card height tracks AnimatedStatCard's own sizing logic so
+            // we don't leak dead vertical space. Sparkline rails get 4dp
+            // breathing room above the 96dp card; non-sparkline rails
+            // get the same buffer above the slimmer 80dp card.
+            final cardH = showSparkline ? 100.0 : 84.0;
 
             return SizedBox(
               height: cardH,
@@ -429,7 +431,7 @@ class _Rail extends StatelessWidget {
             );
           },
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 10),
       ],
     );
   }

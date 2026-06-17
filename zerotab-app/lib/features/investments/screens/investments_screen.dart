@@ -471,22 +471,10 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
   //    IPO       → no icon
   // ─────────────────────────────────────────────────────────────
   Widget _buildTopAppBar() {
-    Widget? trailing;
-    switch (_topCtrl.index) {
-      case 0:
-        // Discover — search
-        trailing = _HeaderBtn(
-          icon: Icons.search_rounded,
-          onTap: () => Navigator.of(context).push(_buildSearchRoute()),
-        );
-      case 1:
-        // Portfolio — refresh prices
-        trailing = _HeaderBtn(icon: Icons.refresh_rounded, onTap: _refresh);
-      case 2:
-      default:
-        // IPO — no trailing icon
-        trailing = null;
-    }
+    // Search icon is now ALWAYS visible (across Discover · Portfolio · IPO)
+    // per the latest user spec. On Portfolio we also surface a secondary
+    // refresh affordance to the left of search.
+    final isPortfolio = _topCtrl.index == 1;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       child: Row(children: [
@@ -495,7 +483,14 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
             fontFamily: 'DMSans', fontSize: 22, fontWeight: FontWeight.w700,
             letterSpacing: -0.7, color: AppColors.text)),
         ),
-        if (trailing != null) trailing,
+        if (isPortfolio) ...[
+          _HeaderBtn(icon: Icons.refresh_rounded, onTap: _refresh),
+          const SizedBox(width: 8),
+        ],
+        _HeaderBtn(
+          icon: Icons.search_rounded,
+          onTap: () => Navigator.of(context).push(_buildSearchRoute()),
+        ),
       ]),
     );
   }
