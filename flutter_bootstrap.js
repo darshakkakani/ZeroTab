@@ -38,7 +38,7 @@ _flutter.buildConfig = {"engineRevision":"c416acfeb8126e097f758c664aaa3da929e27d
 
 _flutter.loader.load({
   serviceWorkerSettings: {
-    serviceWorkerVersion: "2103518759" /* Flutter's service worker is deprecated and will be removed in a future Flutter release. */,
+    serviceWorkerVersion: "2305674968" /* Flutter's service worker is deprecated and will be removed in a future Flutter release. */,
   },
   onEntrypointLoaded: async function(engineInitializer) {
     // Use HTML renderer via bootstrap (--web-renderer flag removed in Flutter 3.22+).
