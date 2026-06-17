@@ -19,7 +19,11 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 // Configuration
 // ---------------------------------------------------------------------------
 
-/** Hostnames we are willing to proxy. Anything else is rejected with 403. */
+/**
+ * Hostnames we are willing to proxy. Anything else is rejected with 403.
+ * P0: Yahoo v8/chart (query1 primary, query2 failover) + mfapi.in NAV history.
+ * P1 (not yet enabled): www.nseindia.com, IPO Guru host.
+ */
 const ALLOWED_HOSTS: ReadonlySet<string> = new Set([
   "query1.finance.yahoo.com",
   "query2.finance.yahoo.com",
@@ -35,6 +39,44 @@ const BROWSER_ACCEPT =
   "application/json, text/plain, */*";
 
 const BROWSER_ACCEPT_LANG = "en-US,en;q=0.9";
+
+/**
+ * Per-host upstream request header overrides.
+ *
+ * Yahoo (query1/query2): browser UA + JSON Accept is enough. v8/chart does
+ * NOT require a Referer, and `^` in index symbols (e.g. `^GSPC` → `%5E GSPC`)
+ * is already URL-encoded client-side; we forward `upstream.toString()` as-is
+ * and the URL object does not double-encode an already-encoded path.
+ *
+ * mfapi.in: same generic headers work; left here so additions don't have to
+ * touch the fetch site.
+ *
+ * Extension point for P1:
+ *   - "www.nseindia.com" → add Referer + Chrome UA + cookie-warmer step
+ *   - IPO Guru host       → add `X-API-KEY` from Deno.env.get("IPO_GURU_KEY")
+ */
+function headersForHost(host: string): Record<string, string> {
+  const base: Record<string, string> = {
+    "User-Agent": BROWSER_UA,
+    "Accept": BROWSER_ACCEPT,
+    "Accept-Language": BROWSER_ACCEPT_LANG,
+  };
+
+  switch (host) {
+    case "query1.finance.yahoo.com":
+    case "query2.finance.yahoo.com":
+      // v8/chart works with the generic browser headers. Keep this branch
+      // explicit so future Yahoo-only tweaks (e.g. Origin) land here.
+      return base;
+
+    case "api.mfapi.in":
+      return base;
+
+    // P1 hosts intentionally not added yet — see ALLOWED_HOSTS comment.
+    default:
+      return base;
+  }
+}
 
 /** Base CORS headers attached to every response. */
 const CORS_HEADERS: Record<string, string> = {
@@ -149,16 +191,12 @@ async function handler(req: Request): Promise<Response> {
 
   const maxAge = cacheMaxAgeFor(upstream);
 
-  // Fetch upstream with browser-ish headers.
+  // Fetch upstream with browser-ish headers, plus any per-host overrides.
   let upstreamRes: Response;
   try {
     upstreamRes = await fetch(upstream.toString(), {
       method: "GET",
-      headers: {
-        "User-Agent": BROWSER_UA,
-        "Accept": BROWSER_ACCEPT,
-        "Accept-Language": BROWSER_ACCEPT_LANG,
-      },
+      headers: headersForHost(upstream.hostname),
       // Edge Functions auto-follow redirects; that's what we want.
       redirect: "follow",
     });

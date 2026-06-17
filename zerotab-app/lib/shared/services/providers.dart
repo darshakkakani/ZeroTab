@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/models.dart';
 import 'api_service.dart';
 import '../../core/constants/api_constants.dart';
+import '../../features/investments/services/chart_data_service.dart';
 
 // ── Auth ──────────────────────────────────────────────────
 
@@ -237,6 +238,23 @@ final insightsFeedProvider = FutureProvider<List<AIInsightModel>>((ref) async {
     return [];
   }
 });
+
+// ── Chart data service + per-(symbol,tf) result cache ────
+//
+// Shared singletons so that InvestmentsScreen can prefetch holding
+// charts on the list page and HoldingChartScreen reads from the same
+// cache on tap. Keeping these in Riverpod (vs a top-level `final`)
+// makes them mockable in tests and keeps lifecycle tied to the
+// ProviderScope rather than module-load order.
+final chartDataServiceProvider =
+    Provider<ChartDataService>((_) => ChartDataService());
+
+// Cache key format used everywhere: '<symbolOrCode>-<exchange>-<tfLabel>'.
+// Same format as the existing private _cacheKey getter in
+// HoldingChartScreen, so prefetched entries land where the screen
+// looks for them.
+final chartCacheProvider =
+    Provider<Map<String, ChartFetchResult>>((_) => <String, ChartFetchResult>{});
 
 // ── User profile ──────────────────────────────────────────
 

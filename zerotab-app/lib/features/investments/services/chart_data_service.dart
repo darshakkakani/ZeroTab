@@ -18,6 +18,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
@@ -122,9 +123,45 @@ class ChartDataException implements Exception {
   String toString() => message;
 }
 
+/// Normalised prefetch unit produced by `ChartDataService.prefetchHoldings`.
+/// `symbol` is the original user-supplied id (used as mfapi.in scheme code
+/// for MFs); `ticker` is the resolved Yahoo ticker (empty for MFs).
+class _PrefetchJob {
+  final HoldingKind kind;
+  final String symbol;
+  final String ticker;
+  final ChartTimeframe tf;
+  const _PrefetchJob({
+    required this.kind,
+    required this.symbol,
+    required this.ticker,
+    required this.tf,
+  });
+}
+
 class ChartDataService {
-  final Dio _dio;
-  ChartDataService([Dio? dio])
+  // ── Singleton instance ─────────────────────────────────────────
+  //
+  // The service is treated as a process-wide singleton so the in-memory
+  // result cache (`_resultCache`) survives screen-pop. Without this, the
+  // holding-chart screen would lose every prefetched timeframe the moment
+  // the user navigates back to the holdings list — defeating the whole
+  // point of the background prefetch we kick off after initial render.
+  //
+  // Using a default factory constructor (rather than `ChartDataService.shared`)
+  // means existing call sites that do `ChartDataService()` automatically
+  // pick up the shared instance — zero churn at the call site.
+  //
+  // The optional `dio` parameter is still honoured for tests; passing a
+  // custom Dio bypasses the cached instance and produces a fresh one.
+  static ChartDataService? _instance;
+
+  factory ChartDataService([Dio? dio]) {
+    if (dio != null) return ChartDataService._internal(dio);
+    return _instance ??= ChartDataService._internal(null);
+  }
+
+  ChartDataService._internal(Dio? dio)
       : _dio = dio ?? Dio(BaseOptions(
             connectTimeout: const Duration(seconds: 12),
             receiveTimeout: const Duration(seconds: 18),
@@ -135,6 +172,20 @@ class ChartDataService {
               'Accept': 'application/json,text/plain,*/*',
             },
           ));
+
+  final Dio _dio;
+
+  // Shared, process-lifetime cache keyed by (ticker-or-scheme, tf-label).
+  // Lives on the singleton so navigation back-out preserves prefetched
+  // bars. Holds successful fetches only — failed fetches are not cached.
+  final Map<String, ChartFetchResult> _resultCache = {};
+
+  String _resultKey(String idOrTicker, ChartTimeframe tf) =>
+      '$idOrTicker::${tf.label}';
+
+  /// Read-only view of the shared cache, exposed for screens that want
+  /// to do their own cache-hit checks (e.g. instant timeframe swaps).
+  Map<String, ChartFetchResult> get resultCache => _resultCache;
 
   // ── CORS handling — two-tier fallback ──────────────────────────
   //
@@ -202,32 +253,128 @@ class ChartDataService {
     throw ChartDataException('All chart-data proxies failed: $lastErr');
   }
 
+  // ── Symbol → Yahoo-ticker resolution ───────────────────────────
+  //
+  // `classifyAndResolve` is the single source of truth for turning a
+  // (symbol, market) pair into a Yahoo Finance v8 ticker string. It
+  // covers every market we currently care about; new markets are a
+  // one-line addition to `_marketSuffix`.
+  //
+  // The `market` argument is interpreted loosely — it can be a literal
+  // exchange code (`NSE`, `BSE`, `HKEX`), a country/region tag (`HK`,
+  // `JP`, `UK`, `DE`, `CN`, `US`, `IN`), or even Yahoo's own suffix
+  // (`.HK`, `.T`). All variants converge to the same suffix.
+  //
+  // Crypto is a special case: `kind == commodity` with a `-` in the
+  // symbol (e.g. `BTC-USD`) is treated as a crypto pair and passed
+  // through; otherwise commodities go through the commodity map.
+
+  /// Static suffix table — keys may be exchange codes, country codes,
+  /// or pre-qualified Yahoo suffixes. Values are the exact suffix Yahoo
+  /// expects (including the leading dot).
+  static const Map<String, String> _marketSuffix = {
+    // India
+    'NSE': '.NS', 'NSI': '.NS', 'IN': '.NS', 'INDIA': '.NS',
+    'BSE': '.BO', 'BO': '.BO', 'BOM': '.BO',
+    // Hong Kong
+    'HK': '.HK', 'HKEX': '.HK', 'HKG': '.HK',
+    // Tokyo
+    'T': '.T', 'JP': '.T', 'JPX': '.T', 'TYO': '.T', 'TSE': '.T',
+    // London
+    'L': '.L', 'UK': '.L', 'LSE': '.L', 'LON': '.L', 'GB': '.L',
+    // Frankfurt
+    'DE': '.DE', 'FRA': '.DE', 'FWB': '.DE', 'XETRA': '.DE',
+    // Shanghai
+    'SS': '.SS', 'SHA': '.SS', 'SSE': '.SS', 'CN': '.SS',
+    // Shenzhen
+    'SZ': '.SZ', 'SHE': '.SZ', 'SZSE': '.SZ',
+    // US — explicit empty suffix (bare symbol)
+    'US': '', 'NASDAQ': '', 'NYSE': '', 'NYSEARCA': '', 'AMEX': '',
+    'BATS': '', 'OTC': '',
+  };
+
+  /// Commodity-symbol → Yahoo futures-ticker translations. NSE/MCX names
+  /// on the left, CME/COMEX `=F` tickers on the right.
+  static const Map<String, String> _commodityMap = {
+    'GOLD': 'GC=F', 'GOLDPETAL': 'GC=F', 'GOLDM': 'GC=F',
+    'SILVER': 'SI=F', 'SILVERM': 'SI=F',
+    'CRUDEOIL': 'CL=F', 'NATURALGAS': 'NG=F',
+    'COPPER': 'HG=F', 'ZINC': 'ZN=F', 'ALUMINIUM': 'ALI=F',
+  };
+
+  /// Classify (symbol, market) and return the Yahoo ticker.
+  ///
+  /// Rules, in order:
+  ///   1. Empty input → empty string.
+  ///   2. Symbol already has a `.` (e.g. `AAPL.MX`) → trust it, return as-is.
+  ///   3. Index symbol (`^GSPC`) → return as-is; HTTP layer URL-encodes `^`.
+  ///   4. Crypto pair (contains `-`, e.g. `BTC-USD`, `ETH-INR`) → return as-is.
+  ///   5. `kind == commodity` → look up in `_commodityMap`; passthrough on miss.
+  ///   6. `kind == mf` → return symbol unchanged (mfapi.in doesn't use tickers).
+  ///   7. Stocks / ETFs → consult `_marketSuffix`:
+  ///        - exact match (case-insensitive) wins
+  ///        - empty suffix means US bare-symbol (`AAPL`)
+  ///        - no match falls back to legacy NSE/BSE logic for safety
+  String classifyAndResolve({
+    required HoldingKind kind,
+    required String symbol,
+    String market = 'NSE',
+  }) {
+    final s = symbol.toUpperCase().trim();
+    if (s.isEmpty) return '';
+
+    // Pre-qualified — caller already added a suffix.
+    if (s.contains('.')) return s;
+
+    // Index — preserve the `^`, leave URL-encoding (%5E) to the HTTP layer.
+    if (s.startsWith('^')) return s;
+
+    // Crypto pair (BTC-USD, ETH-INR, etc.). Yahoo's exact format.
+    if (s.contains('-')) return s;
+
+    // Commodity futures.
+    if (kind == HoldingKind.commodity) {
+      return _commodityMap[s] ?? s;
+    }
+
+    // Mutual funds don't have tickers; mfapi.in keys by scheme code.
+    if (kind == HoldingKind.mf) return s;
+
+    // Stocks / ETFs — look up the suffix table.
+    final m = market.toUpperCase().trim();
+    if (_marketSuffix.containsKey(m)) {
+      final suffix = _marketSuffix[m]!;
+      return suffix.isEmpty ? s : '$s$suffix';
+    }
+    // Legacy fallback — preserves prior behaviour for any market string
+    // we don't recognise (defaults to NSE, BSE override).
+    return m == 'BSE' ? '$s.BO' : '$s.NS';
+  }
+
+  /// Legacy entry point — kept for backwards compatibility. Routes
+  /// through `classifyAndResolve` so the suffix logic lives in one place.
   String yahooTicker({
     required HoldingKind kind,
     required String symbol,
     String exchange = 'NSE',
-  }) {
-    final s = symbol.toUpperCase().trim();
-    if (s.isEmpty) return '';
-    if (s.contains('.')) return s;
-    if (kind == HoldingKind.commodity) {
-      const map = {
-        'GOLD': 'GC=F', 'GOLDPETAL': 'GC=F', 'GOLDM': 'GC=F',
-        'SILVER': 'SI=F', 'SILVERM': 'SI=F',
-        'CRUDEOIL': 'CL=F', 'NATURALGAS': 'NG=F',
-        'COPPER': 'HG=F', 'ZINC': 'ZN=F', 'ALUMINIUM': 'ALI=F',
-      };
-      return map[s] ?? s;
-    }
-    return exchange.toUpperCase() == 'BSE' ? '$s.BO' : '$s.NS';
-  }
+  }) =>
+      classifyAndResolve(kind: kind, symbol: symbol, market: exchange);
 
   Future<ChartFetchResult> fetchYahoo({
     required String ticker,
     required ChartTimeframe tf,
   }) async {
     if (ticker.isEmpty) throw ChartDataException('No symbol');
-    final url = 'https://query1.finance.yahoo.com/v8/finance/chart/$ticker'
+
+    // Shared-cache hit → return immediately. Prefetch + on-tap fetch
+    // both populate this map so navigation back-out preserves results.
+    final cacheKey = _resultKey(ticker, tf);
+    final hit = _resultCache[cacheKey];
+    if (hit != null) return hit;
+
+    // URL-encode the ticker (covers `^` in index symbols → `%5E`).
+    final encTicker = Uri.encodeComponent(ticker);
+    final url = 'https://query1.finance.yahoo.com/v8/finance/chart/$encTicker'
         '?range=${tf.yfRange}&interval=${tf.yfInterval}'
         '&includePrePost=false&events=history';
     final resp = await _fetch(url);
@@ -266,7 +413,9 @@ class ChartDataService {
 
     final metaJson = result['meta'] as Map<String, dynamic>?;
     final meta = metaJson != null ? QuoteMeta.fromYahoo(metaJson) : null;
-    return ChartFetchResult(bars: bars, meta: meta);
+    final out = ChartFetchResult(bars: bars, meta: meta);
+    _resultCache[cacheKey] = out;
+    return out;
   }
 
   Future<ChartFetchResult> fetchMF({
@@ -274,6 +423,13 @@ class ChartDataService {
     required ChartTimeframe tf,
   }) async {
     if (schemeCode.isEmpty) throw ChartDataException('No scheme code');
+
+    // Shared-cache hit. mfapi.in returns ~500KB of full history per
+    // scheme, so caching is doubly important for MF symbols.
+    final cacheKey = _resultKey(schemeCode, tf);
+    final hit = _resultCache[cacheKey];
+    if (hit != null) return hit;
+
     final url  = 'https://api.mfapi.in/mf/$schemeCode';
     final resp = await _fetch(url);
     final body = resp.data is String ? jsonDecode(resp.data as String) : resp.data;
@@ -314,7 +470,109 @@ class ChartDataService {
           b.timeSec * 1000 > DateTime.now().subtract(const Duration(days: 365))
               .millisecondsSinceEpoch)),
     );
-    return ChartFetchResult(bars: bars, meta: meta);
+    final out = ChartFetchResult(bars: bars, meta: meta);
+    _resultCache[cacheKey] = out;
+    return out;
+  }
+
+  // ── Bulk prefetch ──────────────────────────────────────────────
+  //
+  // Warm the cache for a list of holdings in the background so that
+  // tapping any holding row renders its chart instantly. The expected
+  // call site is the Investments screen, post-frame, ~600ms after the
+  // holdings list lands (see `InvestmentsScreen._prefetchCharts`).
+  //
+  // Each item is a map with:
+  //   • `symbol`    (String, required) — stock ticker or MF scheme code
+  //   • `exchange`  (String, optional) — market code; defaults to `NSE`
+  //   • `kind`      (String, required) — one of `stock`, `mf`, `etf`,
+  //                                       `commodity` (case-insensitive)
+  //   • `tf`        (ChartTimeframe, optional) — defaults to `day1m` for
+  //                  stocks/etfs/commodities, `day3m` for MFs
+  //
+  // Idempotent — items whose `(ticker, tf)` is already in the cache are
+  // skipped. Failures are swallowed silently; a real fetch later will
+  // surface the error to the user normally.
+  //
+  // Concurrency is capped at 2 parallel jobs (mfapi.in returns ~500KB
+  // per scheme and we don't want to hammer either upstream).
+  Future<void> prefetchHoldings(
+    List<Map<String, dynamic>> items, {
+    int concurrency = 2,
+  }) async {
+    if (items.isEmpty) return;
+
+    // 1. Normalise & dedupe items into concrete fetch jobs.
+    final jobs = <_PrefetchJob>[];
+    final seen = <String>{};
+    for (final raw in items) {
+      final symbol = (raw['symbol'] as String?)?.trim() ?? '';
+      if (symbol.isEmpty) continue;
+
+      final kindStr = (raw['kind'] as String?)?.toLowerCase().trim() ?? 'stock';
+      final kind = _parseKind(kindStr);
+      final exchange = (raw['exchange'] as String?)?.trim();
+      final providedTf = raw['tf'];
+      final tf = providedTf is ChartTimeframe
+          ? providedTf
+          : (kind == HoldingKind.mf
+              ? ChartTimeframes.day3m
+              : ChartTimeframes.day1m);
+
+      // Resolve to the same cache key the fetch methods use.
+      final String cacheId;
+      if (kind == HoldingKind.mf) {
+        cacheId = symbol.toUpperCase();
+      } else {
+        cacheId = classifyAndResolve(
+          kind: kind,
+          symbol: symbol,
+          market: exchange ?? 'NSE',
+        );
+        if (cacheId.isEmpty) continue;
+      }
+      final key = _resultKey(cacheId, tf);
+      if (_resultCache.containsKey(key)) continue; // idempotent skip
+      if (!seen.add(key)) continue;                 // dedupe within batch
+
+      jobs.add(_PrefetchJob(
+        kind: kind, symbol: symbol, ticker: cacheId, tf: tf,
+      ));
+    }
+    if (jobs.isEmpty) return;
+
+    // 2. Run in fixed-size batches; Future.wait per batch caps fan-out.
+    final width = concurrency < 1 ? 1 : concurrency;
+    for (int i = 0; i < jobs.length; i += width) {
+      final slice = jobs.sublist(i, math.min(i + width, jobs.length));
+      await Future.wait(slice.map(_runPrefetchJob));
+    }
+  }
+
+  Future<void> _runPrefetchJob(_PrefetchJob job) async {
+    try {
+      if (job.kind == HoldingKind.mf) {
+        await fetchMF(schemeCode: job.symbol, tf: job.tf);
+      } else {
+        await fetchYahoo(ticker: job.ticker, tf: job.tf);
+      }
+    } catch (_) {
+      // Best-effort — swallow. A real fetch later will surface the
+      // error through the normal UI path if it still fails.
+    }
+  }
+
+  HoldingKind _parseKind(String s) {
+    switch (s) {
+      case 'mf': case 'mutualfund': case 'mutual_fund':
+        return HoldingKind.mf;
+      case 'etf':
+        return HoldingKind.etf;
+      case 'commodity': case 'commodities':
+        return HoldingKind.commodity;
+      case 'stock': case 'equity': default:
+        return HoldingKind.stock;
+    }
   }
 
   double? _max(Iterable<Candle> bars) {

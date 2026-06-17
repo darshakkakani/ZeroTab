@@ -30,17 +30,19 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/models/models.dart';
+import '../../../shared/services/providers.dart';
 import '../services/chart_data_service.dart';
 import '../services/indicators.dart';
 
 export '../services/chart_data_service.dart' show HoldingKind;
 
-class HoldingChartScreen extends StatefulWidget {
+class HoldingChartScreen extends ConsumerStatefulWidget {
   final MFHoldingModel holding;
   final HoldingKind kind;
 
@@ -60,7 +62,7 @@ class HoldingChartScreen extends StatefulWidget {
   });
 
   @override
-  State<HoldingChartScreen> createState() => _HoldingChartScreenState();
+  ConsumerState<HoldingChartScreen> createState() => _HoldingChartScreenState();
 }
 
 enum _ChartKind { area, candle, line }
@@ -75,9 +77,14 @@ class _CrossInfo {
   });
 }
 
-class _HoldingChartScreenState extends State<HoldingChartScreen>
+class _HoldingChartScreenState extends ConsumerState<HoldingChartScreen>
     with SingleTickerProviderStateMixin {
-  final ChartDataService _svc = ChartDataService();
+  // Riverpod-shared singletons. Reading via `ref.read` (not `watch`) so
+  // we don't rebuild on every cache mutation; this screen is the only
+  // writer once mounted, and InvestmentsScreen primed the entries before
+  // this screen was even pushed.
+  ChartDataService get _svc => ref.read(chartDataServiceProvider);
+  Map<String, ChartFetchResult> get _cache => ref.read(chartCacheProvider);
 
   bool _loading = true;
   String? _error;
@@ -95,9 +102,6 @@ class _HoldingChartScreenState extends State<HoldingChartScreen>
   List<Candle> _bars = const [];
   QuoteMeta?   _meta;
   _CrossInfo?  _cross;
-
-  // Cache: per (symbol, exchange, tf) so re-tapping timeframes is instant.
-  final Map<String, ChartFetchResult> _cache = {};
 
   @override
   void initState() {

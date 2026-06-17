@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
@@ -7,6 +8,7 @@ import '../../../shared/services/providers.dart';
 import '../../../shared/widgets/zt_card.dart';
 import '../../../shared/services/api_service.dart';
 import '../../../core/constants/api_constants.dart';
+import '../services/chart_data_service.dart';
 import 'holding_chart_screen.dart';
 
 // ── Enums ──────────────────────────────────────────────────
@@ -49,6 +51,13 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
   late TabController _tabCtrl;
   _SortMode _sort = _SortMode.value;
   OverlayEntry? _toastOverlay;
+
+  // Prefetch is fire-and-forget — kick it off once per screen mount so
+  // we don't hammer the network on every rebuild when other providers
+  // settle. Lives at the State level (not in the Riverpod cache) so
+  // unmount/remount of the screen gets a fresh prefetch pass if the
+  // user comes back later with stale data.
+  bool _prefetchKicked = false;
 
   @override
   void initState() {
@@ -217,6 +226,99 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
     }
   }
 
+  // ── Prefetch chart data so HoldingChartScreen opens instantly ──
+  //
+  // Goals (in order):
+  //   1) Never block list rendering — runs after the first frame paints.
+  //   2) Best-effort, silent on failure — the chart screen will fall back
+  //      to a normal cold fetch if anything throws here.
+  //   3) Bounded cost — at most 2 concurrent fetches; MF prefetches are
+  //      capped to the top 5 holdings by current value because mfapi.in
+  //      ships ~500 KB of full history per scheme. Stocks/ETF/commodity
+  //      pull the 1D timeframe (small response).
+  //
+  // Cache target: the Riverpod `chartCacheProvider` — same map that
+  // HoldingChartScreen reads via its `_cache` getter, keyed by
+  // '<symbolOrCode>-<exchange>-<tfLabel>' (matches its private
+  // _cacheKey getter so prefetch entries are picked up automatically).
+  Future<void> _prefetchCharts({
+    required List<MFHoldingModel> stocks,
+    required List<MFHoldingModel> mf,
+    required List<MFHoldingModel> etfs,
+    required List<MFHoldingModel> commodities,
+  }) async {
+    // Tiny breather so the first frame finishes painting before we
+    // dispatch any network work. Matches the 400ms used inside
+    // HoldingChartScreen for the same reason.
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    if (!mounted) return;
+
+    final svc   = ref.read(chartDataServiceProvider);
+    final cache = ref.read(chartCacheProvider);
+
+    // Build the job list. Each job is a (key, fetcher) pair: we skip
+    // jobs whose cache slot is already populated (e.g. user already
+    // visited the chart and bounced back).
+    final jobs = <({String key, Future<ChartFetchResult> Function() fetch})>[];
+
+    // Stocks / ETFs / Commodities → 1D Yahoo bars. Symbols come from
+    // the same getters HoldingChartScreen uses (`stockSymbol`,
+    // `etfSymbol`, `commoditySymbol`) so the cache keys collide
+    // exactly with what the chart screen later asks for.
+    void addYahoo(MFHoldingModel h, HoldingKind kind, String symbol) {
+      if (symbol.isEmpty) return;
+      const tf = ChartTimeframes.intraday1d;
+      final key = '$symbol-${h.stockExchange}-${tf.label}';
+      if (cache.containsKey(key)) return;
+      jobs.add((
+        key: key,
+        fetch: () async {
+          final ticker = svc.yahooTicker(
+            kind: kind, symbol: symbol, exchange: h.stockExchange);
+          return svc.fetchYahoo(ticker: ticker, tf: tf);
+        },
+      ));
+    }
+    for (final h in stocks)      addYahoo(h, HoldingKind.stock,     h.stockSymbol);
+    for (final h in etfs)        addYahoo(h, HoldingKind.etf,       h.etfSymbol);
+    for (final h in commodities) addYahoo(h, HoldingKind.commodity, h.commoditySymbol);
+
+    // MF cap — only the top 5 by current value get prefetched. mfapi.in
+    // returns the full NAV history per scheme (~500 KB each), so an
+    // uncapped fan-out on a 30-fund portfolio would burn ~15 MB of
+    // bandwidth on screens the user may never visit.
+    final mfSorted = List<MFHoldingModel>.from(mf)
+      ..sort((a, b) => (b.currentValue ?? 0).compareTo(a.currentValue ?? 0));
+    final mfTop = mfSorted.take(5);
+    for (final h in mfTop) {
+      final code = h.schemeCode;
+      if (code == null || code.isEmpty) continue;
+      const tf = ChartTimeframes.day1m;
+      final key = '$code-${h.stockExchange}-${tf.label}';
+      if (cache.containsKey(key)) continue;
+      jobs.add((
+        key: key,
+        fetch: () => svc.fetchMF(schemeCode: code, tf: tf),
+      ));
+    }
+
+    // Throttled execution: 2 jobs at a time. Future.wait on each slice
+    // means each batch waits for both to settle before the next slice
+    // dispatches — keeps proxy load predictable and matches the same
+    // pattern HoldingChartScreen uses for its own timeframe prefetch.
+    for (int i = 0; i < jobs.length; i += 2) {
+      if (!mounted) return;
+      final batch = jobs.sublist(i, math.min(i + 2, jobs.length));
+      await Future.wait(batch.map((job) async {
+        try {
+          cache[job.key] = await job.fetch();
+        } catch (_) {
+          // Silent: HoldingChartScreen will retry on demand.
+        }
+      }));
+    }
+  }
+
   // ── Sorting ──────────────────────────────────────────────
   List<MFHoldingModel> _sorted(List<MFHoldingModel> items) {
     final copy = List<MFHoldingModel>.from(items);
@@ -249,6 +351,25 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
     final mf          = (mfAsync.value ?? []).where((h) => h.isMF).toList();
     final etfs        = etfsAsync.value ?? [];
     final commodities = commAsync.value ?? [];
+
+    // ── Prefetch holding charts (once, after first frame) ────────
+    // All four AsyncValues are resolved (not loading) by the time we
+    // reach this point — the loading guard above returns early
+    // otherwise. addPostFrameCallback keeps the network work out of
+    // the build phase, and _prefetchKicked guarantees one-shot per
+    // mount even though the build runs every time tabs/sort changes.
+    if (!_prefetchKicked &&
+        !stocksAsync.isLoading && !mfAsync.isLoading &&
+        !etfsAsync.isLoading   && !commAsync.isLoading) {
+      _prefetchKicked = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        // Fire-and-forget — never awaited from build.
+        _prefetchCharts(
+          stocks: stocks, mf: mf, etfs: etfs, commodities: commodities,
+        );
+      });
+    }
 
     final allItems    = [...stocks, ...mf, ...etfs, ...commodities];
     final totalValue    = allItems.fold(0.0, (s,h) => s + (h.currentValue ?? 0));
