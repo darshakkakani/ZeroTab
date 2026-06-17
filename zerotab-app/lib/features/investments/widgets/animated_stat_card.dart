@@ -203,7 +203,15 @@ class _AnimatedStatCardState extends ConsumerState<AnimatedStatCard>
   @override
   Widget build(BuildContext context) {
     final width = widget.width ?? (widget.compact ? 144.0 : 168.0);
-    final height = widget.compact ? 88.0 : 112.0;
+    // Tighter heights — user feedback flagged the previous 112dp /
+    // 88dp footprint as eating too much vertical space per rail. The
+    // new sizes still leave room for symbol + flag, name, sparkline
+    // (when shown), and LTP + delta. Cards without sparklines drop
+    // another 12dp because they don't need the chart strip.
+    final hasSpark = widget.showSparkline;
+    final height = widget.compact
+        ? (hasSpark ? 80.0 : 70.0)
+        : (hasSpark ? 96.0 : 80.0);
     final m = _meta;
     final ltp = m?.regularMarketPrice;
     final pc = m?.previousClose;
@@ -285,7 +293,7 @@ class _AnimatedStatCardState extends ConsumerState<AnimatedStatCard>
                   _CardSkeleton(compact: widget.compact)
                 else
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                     child: _CardContent(
                       ticker: _displayTicker(widget.ticker),
                       flag: _flagFor(widget.exchange),

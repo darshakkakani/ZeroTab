@@ -25,7 +25,6 @@ import '../services/chart_data_service.dart' show HoldingKind;
 import '../../../shared/models/models.dart';
 import 'animated_stat_card.dart';
 import 'bull_refresh_indicator.dart';
-import 'market_pulse_strip.dart';
 import 'rail_section_header.dart';
 
 // ── Curated symbol matrix ─────────────────────────────────────
@@ -230,9 +229,10 @@ class _DiscoverSectionsState extends ConsumerState<DiscoverSections>
     padding: const EdgeInsets.only(top: 4, bottom: 100),
     physics: const AlwaysScrollableScrollPhysics(),
     children: [
-      // Hero pulse strip — scrolls away with the rest of the content.
-      MarketPulseStrip(generation: _generation),
-      // Asset-class filter chip row
+      // Asset-class filter chip row — no separate "pulse strip" hero
+      // because it duplicated the Market Indices rail one screen below
+      // (the user explicitly flagged the redundancy). The Indices rail
+      // is now the single source of truth for index quick-look prices.
       _filterChipRow(),
       if (_showRail(_AssetClass.all))
         _Rail(title: 'Market Indices', icon: Icons.show_chart_rounded,
