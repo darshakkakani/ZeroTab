@@ -73,7 +73,7 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
     super.initState();
     _tabCtrl = TabController(length: 5, vsync: this);
     _tabCtrl.addListener(() => setState(() {}));
-    _topCtrl = TabController(length: 3, vsync: this);
+    _topCtrl = TabController(length: 3, initialIndex: 0, vsync: this);
     _topCtrl.addListener(() => setState(() {}));
   }
 
@@ -396,7 +396,7 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
     // FAB is only meaningful on the Portfolio tab — Discover & IPO have
     // no "add" affordance, so we hide it there to prevent collision
     // with the search field and to keep the IPO surface clean.
-    final showFab = _topCtrl.index == 0;
+    final showFab = _topCtrl.index == 1;
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -421,6 +421,7 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
               // the outer view to avoid gesture conflicts.
               physics: const NeverScrollableScrollPhysics(),
               children: [
+                const _DiscoverTabContent(),
                 _buildPortfolioTab(
                   stocks: stocks, mf: mf, etfs: etfs, commodities: commodities,
                   allItems: allItems,
@@ -429,7 +430,6 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
                   stocksValue: stocksValue, mfValue: mfValue,
                   etfValue: etfValue, commValue: commValue,
                 ),
-                const _DiscoverTabContent(),
                 const _IpoTabContent(),
               ],
             ),
@@ -474,14 +474,17 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
     Widget? trailing;
     switch (_topCtrl.index) {
       case 0:
-        trailing = _HeaderBtn(icon: Icons.refresh_rounded, onTap: _refresh);
-      case 1:
+        // Discover — search
         trailing = _HeaderBtn(
           icon: Icons.search_rounded,
           onTap: () => Navigator.of(context).push(_buildSearchRoute()),
         );
+      case 1:
+        // Portfolio — refresh prices
+        trailing = _HeaderBtn(icon: Icons.refresh_rounded, onTap: _refresh);
       case 2:
       default:
+        // IPO — no trailing icon
         trailing = null;
     }
     return Padding(
@@ -517,8 +520,8 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
         unselectedLabelStyle: const TextStyle(fontFamily: 'DMSans', fontSize: 13.5, fontWeight: FontWeight.w500),
         dividerColor: Colors.transparent,
         tabs: const [
-          Tab(text: 'Portfolio'),
           Tab(text: 'Discover'),
+          Tab(text: 'Portfolio'),
           Tab(text: 'IPO'),
         ],
       ),

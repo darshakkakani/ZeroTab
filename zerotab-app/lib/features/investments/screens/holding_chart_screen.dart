@@ -478,15 +478,6 @@ class _HoldingChartScreenState extends ConsumerState<HoldingChartScreen>
           ]),
         ],
       )),
-      IconButton(
-        tooltip: 'Refresh',
-        icon: const Icon(Icons.refresh_rounded,
-            color: AppColors.text2, size: 19),
-        onPressed: _loading ? null : () {
-          _cache.remove(_cacheKey);
-          _fetchAndRender();
-        },
-      ),
     ]),
   );
 

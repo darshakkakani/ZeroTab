@@ -4,13 +4,9 @@
 // scrolls away with the rest of the content. Sticky pulse strips are an
 // anti-pattern on a tab that already has a sticky outer tab bar.
 //
-// Anatomy (top → bottom):
-//   1. NSE/BSE market status bar — green dot + "MARKET OPEN · closes in
-//      4h 23m" when the cash market is open (IST weekday 09:15–15:30), or
-//      red dot + "MARKET CLOSED · opens Mon 09:15" otherwise. Computed
-//      live from `DateTime.now().toUtc().add(IST offset)` — no API call.
-//   2. 88 dp horizontal carousel of 4 compact AnimatedStatCards
-//      (NIFTY 50, SENSEX, S&P 500, BTC) + a 5th "+ Add index" stub tile.
+// Anatomy:
+//   • 88 dp horizontal carousel of 4 compact AnimatedStatCards
+//     (NIFTY 50, SENSEX, S&P 500, BTC) + a 5th "+ Add index" stub tile.
 //
 // One-shot mount fade-in: the strip fades + slides 12 dp from the top on
 // first build. "Reduce Motion" respected.
@@ -69,49 +65,10 @@ class _MarketPulseStripState extends ConsumerState<MarketPulseStrip>
   Widget build(BuildContext context) {
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final status = _computeMarketStatus(DateTime.now().toUtc());
 
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── NSE/BSE status bar ──
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: (status.isOpen ? AppColors.green : AppColors.red)
-                  .withOpacity(0.10),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 4,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: status.isOpen ? AppColors.green : AppColors.red,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  status.label,
-                  style: TextStyle(
-                    fontFamily: 'DMSans',
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w600,
-                    color: status.isOpen ? AppColors.green : AppColors.red,
-                    letterSpacing: 0.4,
-                    height: 1.0,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
         // ── Hero strip — 4 compact cards + 1 add-index stub ──
         Padding(
           padding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
@@ -248,78 +205,6 @@ class _PulseTile {
     required this.name,
     required this.exchange,
   });
-}
-
-class _MarketStatus {
-  final bool isOpen;
-  final String label;
-  const _MarketStatus({required this.isOpen, required this.label});
-}
-
-// Compute NSE/BSE cash-market status (09:15–15:30 IST, Mon–Fri).
-//
-// We deliberately do this client-side, no API: the schedule is fixed,
-// holidays aren't worth pulling a feed for, and the user gets a tiny
-// reassurance bar that updates the instant they tap into Discover.
-_MarketStatus _computeMarketStatus(DateTime nowUtc) {
-  // IST = UTC+05:30 — fixed offset, no DST.
-  final ist = nowUtc.add(const Duration(hours: 5, minutes: 30));
-  // weekday: Mon=1 … Sun=7
-  final isWeekday = ist.weekday >= DateTime.monday && ist.weekday <= DateTime.friday;
-  final mins = ist.hour * 60 + ist.minute;
-  const openMins = 9 * 60 + 15;
-  const closeMins = 15 * 60 + 30;
-  final isOpen = isWeekday && mins >= openMins && mins < closeMins;
-
-  if (isOpen) {
-    final remaining = closeMins - mins;
-    final h = remaining ~/ 60;
-    final m = remaining % 60;
-    final timeStr =
-        h > 0 ? '${h}h ${m}m' : '${m}m';
-    return _MarketStatus(
-      isOpen: true,
-      label: 'MARKET OPEN · closes in $timeStr',
-    );
-  }
-  // Find next opening day. Sat/Sun and after-hours weekday both fall here.
-  var next = DateTime(ist.year, ist.month, ist.day, 9, 15);
-  if (mins >= openMins) {
-    // After close today — start from tomorrow.
-    next = next.add(const Duration(days: 1));
-  }
-  while (next.weekday == DateTime.saturday ||
-      next.weekday == DateTime.sunday) {
-    next = next.add(const Duration(days: 1));
-  }
-  // If it's tomorrow vs Monday-ish:
-  final dayLabel = _dayLabel(ist, next);
-  return _MarketStatus(
-    isOpen: false,
-    label: 'MARKET CLOSED · opens $dayLabel 09:15',
-  );
-}
-
-String _dayLabel(DateTime now, DateTime next) {
-  final isTomorrow = next.day == now.day + 1 && next.month == now.month;
-  if (isTomorrow) return 'tomorrow';
-  switch (next.weekday) {
-    case DateTime.monday:
-      return 'Mon';
-    case DateTime.tuesday:
-      return 'Tue';
-    case DateTime.wednesday:
-      return 'Wed';
-    case DateTime.thursday:
-      return 'Thu';
-    case DateTime.friday:
-      return 'Fri';
-    case DateTime.saturday:
-      return 'Sat';
-    case DateTime.sunday:
-      return 'Sun';
-  }
-  return '';
 }
 
 MFHoldingModel _stubHolding() => MFHoldingModel(

@@ -273,24 +273,83 @@ class ChartDataService {
   /// or pre-qualified Yahoo suffixes. Values are the exact suffix Yahoo
   /// expects (including the leading dot).
   static const Map<String, String> _marketSuffix = {
-    // India
+    // ── United States (bare symbol, no suffix) ──────────────────────────
+    'US': '', 'USA': '',
+    'NASDAQ': '', 'NMS': '', 'NCM': '', 'NGM': '',          // NASDAQ tiers
+    'NYSE': '', 'NYQ': '', 'ASE': '',                       // NYSE / NYSE American
+    'NYSEARCA': '', 'PCX': '', 'ARCA': '',                  // NYSE Arca
+    'AMEX': '', 'BATS': '', 'CBOE': '', 'IEX': '',
+    'OTC': '', 'PNK': '', 'OBB': '', 'OEM': '',             // OTC / Pink Sheets
+
+    // ── Crypto & FX (Yahoo expects symbol as-is: BTC-USD, USDINR=X) ────
+    'CCC': '', 'CRYPTO': '',
+    'CCY': '', 'FX': '', 'CUR': '',
+
+    // ── India ──────────────────────────────────────────────────────────
     'NSE': '.NS', 'NSI': '.NS', 'IN': '.NS', 'INDIA': '.NS',
     'BSE': '.BO', 'BO': '.BO', 'BOM': '.BO',
-    // Hong Kong
-    'HK': '.HK', 'HKEX': '.HK', 'HKG': '.HK',
-    // Tokyo
-    'T': '.T', 'JP': '.T', 'JPX': '.T', 'TYO': '.T', 'TSE': '.T',
-    // London
-    'L': '.L', 'UK': '.L', 'LSE': '.L', 'LON': '.L', 'GB': '.L',
-    // Frankfurt
-    'DE': '.DE', 'FRA': '.DE', 'FWB': '.DE', 'XETRA': '.DE',
-    // Shanghai
-    'SS': '.SS', 'SHA': '.SS', 'SSE': '.SS', 'CN': '.SS',
-    // Shenzhen
-    'SZ': '.SZ', 'SHE': '.SZ', 'SZSE': '.SZ',
-    // US — explicit empty suffix (bare symbol)
-    'US': '', 'NASDAQ': '', 'NYSE': '', 'NYSEARCA': '', 'AMEX': '',
-    'BATS': '', 'OTC': '',
+
+    // ── United Kingdom / Ireland ───────────────────────────────────────
+    'LSE': '.L', 'LON': '.L', 'L': '.L', 'UK': '.L', 'GB': '.L',
+    'IOB': '.IL',                                           // London Int'l Order Book
+    'ISE': '.IR',                                           // Irish Stock Exchange
+
+    // ── Continental Europe ─────────────────────────────────────────────
+    'GER': '.DE', 'XET': '.DE', 'XETRA': '.DE', 'FRA': '.F', 'FWB': '.F',
+    'BER': '.BE', 'STU': '.SG', 'HAM': '.HM', 'HAN': '.HA', 'MUN': '.MU', 'DUS': '.DU',
+    'AMS': '.AS',                                           // Euronext Amsterdam
+    'PAR': '.PA', 'EPA': '.PA',                             // Euronext Paris
+    'BRU': '.BR',                                           // Euronext Brussels
+    'LIS': '.LS',                                           // Euronext Lisbon
+    'EBS': '.SW', 'SWX': '.SW', 'VTX': '.VX',               // SIX Swiss
+    'MIL': '.MI', 'BIT': '.MI',                             // Borsa Italiana
+    'MCE': '.MC', 'BME': '.MC',                             // Bolsa de Madrid
+    'ATH': '.AT',                                           // Athens
+    'WAR': '.WA',                                           // Warsaw
+    'BUD': '.BD',                                           // Budapest
+    'PRA': '.PR',                                           // Prague
+    'IST': '.IS',                                           // Istanbul
+    'STO': '.ST',                                           // Stockholm
+    'CPH': '.CO',                                           // Copenhagen
+    'HEL': '.HE',                                           // Helsinki
+    'OSL': '.OL',                                           // Oslo
+    'ICE': '.IC',                                           // Iceland
+    'MOEX': '.ME', 'MCX': '.ME',                            // Moscow
+
+    // ── Asia-Pacific ───────────────────────────────────────────────────
+    'TYO': '.T', 'TSE': '.T', 'JPX': '.T', 'JP': '.T', 'T': '.T',
+    'HKG': '.HK', 'HKEX': '.HK', 'HK': '.HK',
+    'SHA': '.SS', 'SHH': '.SS', 'SSE': '.SS', 'SS': '.SS', 'CN': '.SS',
+    'SHE': '.SZ', 'SHZ': '.SZ', 'SZSE': '.SZ', 'SZ': '.SZ',
+    'TAI': '.TW', 'TWO': '.TWO', 'TPE': '.TW',              // Taiwan
+    'KSC': '.KS', 'KOSPI': '.KS',                           // Korea KOSPI
+    'KOE': '.KQ', 'KOSDAQ': '.KQ',                          // Korea KOSDAQ
+    'ASX': '.AX', 'AU': '.AX',                              // Australia
+    'NZ': '.NZ', 'NZE': '.NZ',                              // New Zealand
+    'SES': '.SI', 'SGX': '.SI', 'SG': '.SI',                // Singapore
+    'KLS': '.KL', 'MYX': '.KL',                             // Malaysia
+    'JKT': '.JK', 'IDX': '.JK',                             // Indonesia
+    'SET': '.BK', 'BKK': '.BK',                             // Thailand
+    'PSE': '.PS',                                           // Philippines
+    'HOSE': '.VN', 'HNX': '.HN',                            // Vietnam
+
+    // ── Americas ───────────────────────────────────────────────────────
+    'TOR': '.TO', 'TSX': '.TO',                             // Toronto
+    'TSXV': '.V', 'CVE': '.V',                              // TSX Venture
+    'CNQ': '.CN', 'CSE': '.CN',                             // Canadian Securities
+    'NEO': '.NE',                                           // NEO Exchange
+    'SAO': '.SA', 'BVMF': '.SA', 'BVSP': '.SA',             // Brazil B3
+    'MEX': '.MX', 'BMV': '.MX',                             // Mexico
+    'BCBA': '.BA',                                          // Buenos Aires
+    'SGO': '.SN',                                           // Santiago
+
+    // ── Africa & Middle East ───────────────────────────────────────────
+    'JNB': '.JO', 'JSE': '.JO',                             // Johannesburg
+    'CAI': '.CA',                                           // Cairo
+    'TLV': '.TA',                                           // Tel Aviv
+    'SAU': '.SR',                                           // Saudi (Tadawul)
+    'DFM': '.AE', 'ADX': '.AE',                             // UAE
+    'QSE': '.QA',                                           // Qatar
   };
 
   /// Commodity-symbol → Yahoo futures-ticker translations. NSE/MCX names
@@ -346,9 +405,10 @@ class ChartDataService {
       final suffix = _marketSuffix[m]!;
       return suffix.isEmpty ? s : '$s$suffix';
     }
-    // Legacy fallback — preserves prior behaviour for any market string
-    // we don't recognise (defaults to NSE, BSE override).
-    return m == 'BSE' ? '$s.BO' : '$s.NS';
+    // Unknown exchange → bare symbol. India tiles all carry NSI/NSE/BSE so
+    // they hit the map; falling back to bare avoids appending .NS to US/EU/
+    // crypto symbols that don't have an explicit market hint.
+    return s;
   }
 
   /// Legacy entry point — kept for backwards compatibility. Routes
@@ -643,6 +703,16 @@ class ChartDataService {
   /// instead of "give me a 1d/1m bar series".
   Future<ChartFetchResult> fetchSparkline(String ticker) =>
       fetchYahoo(ticker: ticker, tf: ChartTimeframes.intraday1d);
+
+  /// Quote-only path used by cards that don't render a sparkline. Returns
+  /// a `ChartFetchResult` with empty bars and just the meta block (price +
+  /// previous-close + currency). Cheaper than `fetchSparkline` because we
+  /// request the coarsest interval Yahoo offers and discard the bars.
+  Future<ChartFetchResult> fetchQuoteOnly(String ticker) async {
+    final res = await fetchYahoo(ticker: ticker, tf: ChartTimeframes.intraday1d);
+    // Drop the bars — caller only needs `meta`.
+    return ChartFetchResult(bars: const [], meta: res.meta);
+  }
 
   /// Lightweight quote — just the meta block (price + day change +
   /// 52-week range), no candles. 60-s in-memory cache because Discover

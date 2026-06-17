@@ -88,6 +88,17 @@ const List<_MarketTile> _usStocks = [
   _MarketTile('NFLX',  'Netflix',       'NMS', HoldingKind.stock),
 ];
 
+const List<_MarketTile> _aiTechLeaders = [
+  _MarketTile('NVDA',  'NVIDIA',                 'NMS', HoldingKind.stock),
+  _MarketTile('TSLA',  'Tesla',                  'NMS', HoldingKind.stock),
+  _MarketTile('AVGO',  'Broadcom',               'NMS', HoldingKind.stock),
+  _MarketTile('AMD',   'Advanced Micro Devices', 'NMS', HoldingKind.stock),
+  _MarketTile('ARM',   'Arm Holdings',           'NMS', HoldingKind.stock),
+  _MarketTile('PLTR',  'Palantir',               'NMS', HoldingKind.stock),
+  _MarketTile('MSTR',  'MicroStrategy',          'NMS', HoldingKind.stock),
+  _MarketTile('META',  'Meta Platforms',         'NMS', HoldingKind.stock),
+];
+
 const List<_MarketTile> _euStocks = [
   _MarketTile('ASML.AS', 'ASML Holding', 'AMS', HoldingKind.stock),
   _MarketTile('SAP.DE',  'SAP',          'GER', HoldingKind.stock),
@@ -204,6 +215,17 @@ class _DiscoverSectionsState extends ConsumerState<DiscoverSections>
   }
 
   // ─── Browse mode ────────────────────────────────────────────
+  //
+  // Section order (top → bottom) is intentional:
+  //   1. Market Indices            (showSparkline: false — flat at <1% intraday)
+  //   2. Trending in India         (showSparkline: true)
+  //   3. AI & Tech Leaders         (showSparkline: true, accentGradient — spotlight)
+  //   4. Top US Stocks             (showSparkline: true)
+  //   5. Cryptocurrencies          (showSparkline: true — spark IS the value prop)
+  //   6. Gold & Precious Metals    (showSparkline: true — momentum buy)
+  //   7. European Stocks           (showSparkline: false — info-low for IN users)
+  //   8. Global ETFs               (showSparkline: false — slow movers)
+  //   9. Currencies vs INR         (showSparkline: false — <0.5% daily, flat smudge)
   Widget _browseSections() => ListView(
     padding: const EdgeInsets.only(top: 4, bottom: 100),
     physics: const AlwaysScrollableScrollPhysics(),
@@ -214,36 +236,59 @@ class _DiscoverSectionsState extends ConsumerState<DiscoverSections>
       _filterChipRow(),
       if (_showRail(_AssetClass.all))
         _Rail(title: 'Market Indices', icon: Icons.show_chart_rounded,
-          tintFg: AppColors.accent, tiles: _indices, onTap: _openTileFor,
-          generation: _generation),
+          tintFg: AppColors.accent, tiles: _indices,
+          showSparkline: false,
+          onTap: _openTileFor, generation: _generation),
       if (_showRail(_AssetClass.stocksIn))
         _Rail(title: 'Trending in India', icon: Icons.local_fire_department_rounded,
           tintFg: AppColors.red, flagEmoji: '🇮🇳',
-          tiles: _trendingIn, onTap: _openTileFor, generation: _generation),
+          tiles: _trendingIn,
+          showSparkline: true,
+          onTap: _openTileFor, generation: _generation),
+      // AI & Tech Leaders — NEW spotlight rail, placed ABOVE Top US Stocks.
+      if (_showRail(_AssetClass.stocksUs))
+        _Rail(title: 'AI & Tech Leaders', icon: Icons.bolt_rounded,
+          tintFg: AppColors.accent2,
+          tiles: _aiTechLeaders,
+          showSparkline: true,
+          accentGradient: true,
+          onTap: _openTileFor, generation: _generation),
       if (_showRail(_AssetClass.stocksUs))
         _Rail(title: 'Top US Stocks', icon: Icons.public_rounded,
           tintFg: AppColors.accent, flagEmoji: '🇺🇸',
-          tiles: _usStocks, onTap: _openTileFor, generation: _generation),
-      if (_filter == _AssetClass.all)
-        _Rail(title: 'European Stocks', icon: Icons.public_rounded,
-          tintFg: AppColors.accent, flagEmoji: '🇪🇺',
-          tiles: _euStocks, onTap: _openTileFor, generation: _generation),
-      if (_showRail(_AssetClass.etf))
-        _Rail(title: 'Global ETFs', icon: Icons.donut_large_rounded,
-          tintFg: AppColors.text2, tintBg: AppColors.bg3,
-          tiles: _globalEtfs, onTap: _openTileFor, generation: _generation),
+          tiles: _usStocks,
+          showSparkline: true,
+          onTap: _openTileFor, generation: _generation),
       if (_showRail(_AssetClass.crypto))
         _Rail(title: 'Cryptocurrencies', icon: Icons.currency_bitcoin_rounded,
           tintFg: AppColors.gold,
-          tiles: _crypto, onTap: _openTileFor, generation: _generation),
+          tiles: _crypto,
+          showSparkline: true,
+          onTap: _openTileFor, generation: _generation),
       if (_showRail(_AssetClass.gold))
         _Rail(title: 'Gold & Precious Metals', icon: Icons.diamond_rounded,
           tintFg: AppColors.gold,
-          tiles: _goldRail, onTap: _openTileFor, generation: _generation),
+          tiles: _goldRail,
+          showSparkline: true,
+          onTap: _openTileFor, generation: _generation),
+      if (_filter == _AssetClass.all)
+        _Rail(title: 'European Stocks', icon: Icons.public_rounded,
+          tintFg: AppColors.accent, flagEmoji: '🇪🇺',
+          tiles: _euStocks,
+          showSparkline: false,
+          onTap: _openTileFor, generation: _generation),
+      if (_showRail(_AssetClass.etf))
+        _Rail(title: 'Global ETFs', icon: Icons.donut_large_rounded,
+          tintFg: AppColors.text2, tintBg: AppColors.bg3,
+          tiles: _globalEtfs,
+          showSparkline: false,
+          onTap: _openTileFor, generation: _generation),
       if (_filter == _AssetClass.all)
         _Rail(title: 'Currencies vs INR', icon: Icons.swap_horiz_rounded,
           tintFg: AppColors.text2, tintBg: AppColors.bg3,
-          tiles: _currencies, onTap: _openTileFor, generation: _generation),
+          tiles: _currencies,
+          showSparkline: false,
+          onTap: _openTileFor, generation: _generation),
       // MF & Bonds rails currently have no curated tiles — show a tasteful
       // empty card when the user filters down to them.
       if (_filter == _AssetClass.mf)
@@ -304,6 +349,16 @@ class _Rail extends StatelessWidget {
   final List<_MarketTile> tiles;
   final ValueChanged<_MarketTile> onTap;
   final int generation;
+  // Optional override for card width — defaults to LayoutBuilder's
+  // 2.4-card peek math. Set this only if a rail needs a fixed width.
+  final double? cardWidthOverride;
+  // Per-rail flag: false for low-density rails (Indices, ETFs, FX) where
+  // the spark reads as a flat smudge. Cards in those rails skip the bar
+  // fetch entirely (~80 KB / 20-tile rail saved on cold-load).
+  final bool showSparkline;
+  // Used by the AI & Tech Leaders spotlight rail to swap card surface
+  // for a subtle indigo gradient.
+  final bool accentGradient;
 
   const _Rail({
     required this.title,
@@ -314,6 +369,9 @@ class _Rail extends StatelessWidget {
     required this.generation,
     this.tintBg,
     this.flagEmoji,
+    this.cardWidthOverride,
+    this.showSparkline = true,
+    this.accentGradient = false,
   });
 
   @override
@@ -330,27 +388,48 @@ class _Rail extends StatelessWidget {
           flagEmoji: flagEmoji,
           onSeeAll: null, // See-all is intentionally a v2+ stub for now.
         ),
-        SizedBox(
-          height: 124,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: tiles.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
-            itemBuilder: (_, i) {
-              final t = tiles[i];
-              return AnimatedStatCard(
-                key: ValueKey('${t.ticker}-$generation'),
-                ticker: t.ticker,
-                name: t.name,
-                exchange: t.exchange,
-                kind: t.kind,
-                mountIndex: i,
-                onTap: () => onTap(t),
-              );
-            },
-          ),
+        const SizedBox(height: 8),
+        LayoutBuilder(
+          builder: (ctx, c) {
+            // Target: 2 full cards + 0.4 peek of the third. Tile gap = 8.
+            // available width inside the list = maxWidth - 16 (left pad).
+            // No right pad, so the peek extends to the screen edge.
+            const leftPad = 16.0;
+            const gap = 8.0;
+            final available = c.maxWidth - leftPad;
+            final cardW = cardWidthOverride ??
+                ((available - gap) / 2.4).clamp(140.0, 184.0);
+            // Card height: rail variant default is 112 dp. Outer slot
+            // adds a couple of dp for shadow / focus-ring rhythm.
+            const cardH = 116.0;
+
+            return SizedBox(
+              height: cardH,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.only(left: leftPad),
+                itemCount: tiles.length,
+                separatorBuilder: (_, __) => const SizedBox(width: gap),
+                itemBuilder: (_, i) {
+                  final t = tiles[i];
+                  return AnimatedStatCard(
+                    key: ValueKey('${t.ticker}-$generation'),
+                    ticker: t.ticker,
+                    name: t.name,
+                    exchange: t.exchange,
+                    kind: t.kind,
+                    width: cardW,
+                    showSparkline: showSparkline,
+                    accentGradient: accentGradient,
+                    mountIndex: i,
+                    onTap: () => onTap(t),
+                  );
+                },
+              ),
+            );
+          },
         ),
+        const SizedBox(height: 18),
       ],
     );
   }

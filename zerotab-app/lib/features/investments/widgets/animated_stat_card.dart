@@ -59,6 +59,22 @@ class AnimatedStatCard extends ConsumerStatefulWidget {
   /// Stagger index for mount fade. Capped internally at 6.
   final int mountIndex;
 
+  /// Optional explicit card width. When null, falls back to the variant
+  /// default (168 for the rail variant, 144 for compact pulse-strip).
+  /// Set by the rail's LayoutBuilder so cards expose exactly 2.4 cards
+  /// of peek per viewport.
+  final double? width;
+
+  /// When false, the card skips the intraday-bar fetch and renders LTP +
+  /// day-% only. Used by low-density rails (Indices, ETFs, FX) where the
+  /// spark would read as a flat smudge.
+  final bool showSparkline;
+
+  /// When true, the card swaps its solid surface for a subtle indigo
+  /// gradient. Used by the spotlight "AI & Tech Leaders" rail to signal
+  /// the editorial slot without being a "crypto rainbow".
+  final bool accentGradient;
+
   const AnimatedStatCard({
     super.key,
     required this.ticker,
@@ -68,6 +84,9 @@ class AnimatedStatCard extends ConsumerStatefulWidget {
     required this.onTap,
     this.compact = false,
     this.mountIndex = 0,
+    this.width,
+    this.showSparkline = true,
+    this.accentGradient = false,
   });
 
   @override
@@ -121,7 +140,12 @@ class _AnimatedStatCardState extends ConsumerState<AnimatedStatCard>
   Future<void> _load() async {
     try {
       final svc = ref.read(chartDataServiceProvider);
-      final res = await svc.fetchSparkline(widget.ticker);
+      // When the parent rail has opted out of sparklines, take the cheaper
+      // quote-only path — same Yahoo endpoint but the bars are dropped, so
+      // no downsample work and no sparkline draw-in.
+      final res = widget.showSparkline
+          ? await svc.fetchSparkline(widget.ticker)
+          : await svc.fetchQuoteOnly(widget.ticker);
       if (!mounted) return;
       // Filter out null closes (Yahoo can return holes for illiquid bars).
       final allCloses = res.bars
@@ -178,7 +202,7 @@ class _AnimatedStatCardState extends ConsumerState<AnimatedStatCard>
 
   @override
   Widget build(BuildContext context) {
-    final width = widget.compact ? 144.0 : 168.0;
+    final width = widget.width ?? (widget.compact ? 144.0 : 168.0);
     final height = widget.compact ? 88.0 : 112.0;
     final m = _meta;
     final ltp = m?.regularMarketPrice;
@@ -205,9 +229,24 @@ class _AnimatedStatCardState extends ConsumerState<AnimatedStatCard>
           width: width,
           height: height,
           decoration: BoxDecoration(
-            color: AppColors.bg2,
+            color: widget.accentGradient ? null : AppColors.bg2,
+            gradient: widget.accentGradient
+                ? const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF1A1530), // deep indigo
+                      Color(0xFF12182A), // night blue
+                    ],
+                  )
+                : null,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border, width: 0.5),
+            border: Border.all(
+              color: widget.accentGradient
+                  ? AppColors.accent2.withOpacity(0.22)
+                  : AppColors.border,
+              width: widget.accentGradient ? 1 : 0.5,
+            ),
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(14),
@@ -252,6 +291,8 @@ class _AnimatedStatCardState extends ConsumerState<AnimatedStatCard>
                       flag: _flagFor(widget.exchange),
                       name: widget.name,
                       compact: widget.compact,
+                      cardWidth: width,
+                      showSparkline: widget.showSparkline,
                       closes: _closes,
                       sparkCtrl: _sparkCtrl,
                       flashCtrl: _flashCtrl,
@@ -289,6 +330,8 @@ class _CardContent extends StatelessWidget {
   final String flag;
   final String name;
   final bool compact;
+  final double cardWidth;
+  final bool showSparkline;
   final List<double> closes;
   final AnimationController sparkCtrl;
   final AnimationController flashCtrl;
@@ -305,6 +348,8 @@ class _CardContent extends StatelessWidget {
     required this.flag,
     required this.name,
     required this.compact,
+    required this.cardWidth,
+    required this.showSparkline,
     required this.closes,
     required this.sparkCtrl,
     required this.flashCtrl,
@@ -326,7 +371,10 @@ class _CardContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Row 1 — ticker + flag.
+        // Row 1 — ticker + flag. The ticker is wrapped in a FittedBox so
+        // long symbols (RELIANCE, USDINR=X, BRK-B) scale DOWN to fit
+        // instead of being '…'-truncated. Card width is clamped ≥140 dp
+        // by the rail layout, so the natural floor is ~9–10 sp.
         SizedBox(
           height: 16,
           child: Row(
@@ -334,18 +382,28 @@ class _CardContent extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Flexible(
-                child: Text(
-                  ticker.length > 7 ? '${ticker.substring(0, 7)}…' : ticker,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: 'DMSans',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.text,
-                    letterSpacing: 0.2,
-                    fontFeatures: [FontFeature.tabularFigures()],
-                    height: 1.0,
+                child: SizedBox(
+                  // Card inner padding is 12 + 12 = 24, then leave room
+                  // for a 6 dp gap + 13 dp flag emoji.
+                  width: (cardWidth - 24 - 6 - 13).clamp(40.0, 200.0),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      ticker,
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.visible,
+                      style: const TextStyle(
+                        fontFamily: 'DMSans',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.text,
+                        letterSpacing: 0.2,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                        height: 1.0,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -374,23 +432,28 @@ class _CardContent extends StatelessWidget {
           ),
         ],
         const Spacer(),
-        // Row 3 — sparkline.
-        SizedBox(
-          height: compact ? 24 : 32,
-          child: closes.length < 2
-              ? _ShimmerSparkline(height: compact ? 24 : 32)
-              : AnimatedBuilder(
-                  animation: sparkCtrl,
-                  builder: (_, __) => CustomPaint(
-                    size: Size(double.infinity, compact ? 24 : 32),
-                    painter: _SparklinePainter(
-                      closes: closes,
-                      color: sparkColor,
-                      progress: reduceMotion ? 1.0 : sparkCtrl.value,
+        // Row 3 — sparkline. Gated on `showSparkline`: low-density rails
+        // (Indices, ETFs, FX) skip the bar fetch entirely and reserve a
+        // tiny rhythm gap instead of rendering the line.
+        if (showSparkline)
+          SizedBox(
+            height: compact ? 24 : 32,
+            child: closes.length < 2
+                ? _ShimmerSparkline(height: compact ? 24 : 32)
+                : AnimatedBuilder(
+                    animation: sparkCtrl,
+                    builder: (_, __) => CustomPaint(
+                      size: Size(double.infinity, compact ? 24 : 32),
+                      painter: _SparklinePainter(
+                        closes: closes,
+                        color: sparkColor,
+                        progress: reduceMotion ? 1.0 : sparkCtrl.value,
+                      ),
                     ),
                   ),
-                ),
-        ),
+          )
+        else
+          const SizedBox(height: 4),
         const SizedBox(height: 4),
         // Row 4 — LTP + day-% pill.
         SizedBox(
