@@ -1,34 +1,32 @@
 // Discover sections widget — Discover tab body inside the Invest screen.
 //
-// This widget powers the **Discover** tab of the new outer 3-tab Invest IA
-// (Portfolio · Discover · IPO). It provides:
+// V2 redesign (premium): the inline search field, the inline search-result
+// list, the `_MarketCard` private widget and the `_Section` inline header
+// have all been retired. Search now lives in a full-screen modal pushed
+// from the top app-bar's search icon (see `full_screen_search.dart`), and
+// each rail uses the polished `AnimatedStatCard` (with mini-sparkline) +
+// `RailSectionHeader` (with tinted icon badge, count chip, "See all" link).
 //
-//   1. A sticky search field (Yahoo /v1/finance/search via chartDataService)
-//   2. Asset-class filter chips (Stocks IN · Stocks US · MF · ETF · Crypto ·
-//      Gold · Bonds) — visible when search is empty, controls which rails
-//      render below.
-//   3. Theme rails — horizontal carousels of curated symbols (Indices,
-//      US stocks, EU stocks, Japan, HK/China, Global ETFs, Crypto, Forex).
-//      Each card auto-loads its LTP + day-% via chartDataService.fetchQuote.
+// Structure:
+//   1. `MarketPulseStrip` — hero (NSE/BSE status bar + 4 index tiles).
+//   2. Asset-class filter chip row (unchanged).
+//   3. Theme rails — Indices, Trending IN, US, EU, ETFs, Crypto, Gold, FX.
 //
-// All taps drill into the existing `HoldingChartScreen` via its
-// override-symbol constructor — zero new data layer, zero schema, zero
-// auth surface. Routes through the same Edge Function CORS proxy as the
-// rest of the app.
-//
-// Lives in its own file so the Discover tab body is testable in isolation
-// and so `investments_screen.dart` stays focused on portfolio logic.
-// `GlobalMarketsScreen` (the standalone Discover screen) is untouched —
-// this widget is a peer implementation tuned for the embedded tab.
+// The whole list is wrapped in `BullRefreshIndicator` for pull-to-refresh
+// (5-candle painter, haptics on armed + loading entry). Refresh bumps a
+// `_generation` int; cards re-mount via `Key('${ticker}-$_generation')`
+// which fires a fresh `fetchSparkline` for each visible tile.
 
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../shared/models/models.dart';
-import '../../../shared/services/providers.dart';
-import '../services/chart_data_service.dart';
 import '../screens/holding_chart_screen.dart';
+import '../services/chart_data_service.dart' show HoldingKind;
+import '../../../shared/models/models.dart';
+import 'animated_stat_card.dart';
+import 'bull_refresh_indicator.dart';
+import 'market_pulse_strip.dart';
+import 'rail_section_header.dart';
 
 // ── Curated symbol matrix ─────────────────────────────────────
 class _MarketTile {
@@ -138,11 +136,7 @@ const List<_MarketTile> _goldRail = [
 //  Public widget — embedded Discover body
 // ─────────────────────────────────────────────────────────────
 class DiscoverSections extends ConsumerStatefulWidget {
-  /// Optional FocusNode — when supplied, the parent (Invest screen's
-  /// app-bar search icon) can call `.requestFocus()` to jump the user
-  /// straight into typing.
-  final FocusNode? searchFocusNode;
-  const DiscoverSections({super.key, this.searchFocusNode});
+  const DiscoverSections({super.key});
 
   @override
   ConsumerState<DiscoverSections> createState() => _DiscoverSectionsState();
@@ -150,72 +144,20 @@ class DiscoverSections extends ConsumerStatefulWidget {
 
 class _DiscoverSectionsState extends ConsumerState<DiscoverSections>
     with AutomaticKeepAliveClientMixin {
-  final TextEditingController _ctrl = TextEditingController();
-  late final FocusNode _focus;
-  bool _ownsFocus = false;
-
-  Timer? _debounce;
-  String _query = '';
-  List<SearchResult> _results = const [];
-  bool _searching = false;
   _AssetClass _filter = _AssetClass.all;
+  // Generation counter — bumped on every pull-to-refresh. Cards key off this
+  // so they re-mount and re-fetch when the user pulls.
+  int _generation = 0;
 
   @override
   bool get wantKeepAlive => true;
 
-  @override
-  void initState() {
-    super.initState();
-    if (widget.searchFocusNode != null) {
-      _focus = widget.searchFocusNode!;
-    } else {
-      _focus = FocusNode();
-      _ownsFocus = true;
-    }
-    _focus.addListener(_onFocusChange);
-  }
-
-  void _onFocusChange() {
-    if (mounted) setState(() {});
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _ctrl.dispose();
-    _focus.removeListener(_onFocusChange);
-    if (_ownsFocus) _focus.dispose();
-    super.dispose();
-  }
-
-  void _onChanged(String v) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () {
-      _runSearch(v);
-    });
-  }
-
-  Future<void> _runSearch(String v) async {
-    final q = v.trim();
-    if (q.isEmpty) {
-      setState(() {
-        _query = '';
-        _results = const [];
-        _searching = false;
-      });
-      return;
-    }
-    setState(() {
-      _query = q;
-      _searching = true;
-    });
-    final svc = ref.read(chartDataServiceProvider);
-    final results = await svc.searchSymbols(q, limit: 10);
-    if (!mounted || _query != q) return;
-    setState(() {
-      _results = results;
-      _searching = false;
-    });
+  Future<void> _refresh() async {
+    // Bump generation → forces every visible card to re-mount and re-fetch.
+    setState(() => _generation += 1);
+    // Keep the bull-candle loop visible at least one cycle, even when every
+    // tile is served from the in-memory cache and would return instantly.
+    await Future<void>.delayed(const Duration(milliseconds: 800));
   }
 
   void _openTile({
@@ -255,136 +197,60 @@ class _DiscoverSectionsState extends ConsumerState<DiscoverSections>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final showSearchResults = _query.isNotEmpty;
-    return Column(children: [
-      _searchField(),
-      Expanded(child: showSearchResults
-          ? _searchResultsList()
-          : _browseSections()),
-    ]);
-  }
-
-  Widget _searchField() => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-    child: Container(
-      height: 44,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: AppColors.bg2,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: _focus.hasFocus
-              ? AppColors.accent.withValues(alpha: 0.55)
-              : AppColors.border)),
-      child: Row(children: [
-        const Icon(Icons.search_rounded, color: AppColors.text3, size: 18),
-        const SizedBox(width: 8),
-        Expanded(child: TextField(
-          controller: _ctrl,
-          focusNode: _focus,
-          onChanged: _onChanged,
-          style: const TextStyle(fontFamily: 'DMSans', fontSize: 13.5,
-              color: AppColors.text),
-          decoration: const InputDecoration(
-            isCollapsed: true,
-            border: InputBorder.none,
-            hintText: 'Search Apple, Tencent, BTC, NIFTY, EUR/INR…',
-            hintStyle: TextStyle(fontFamily: 'DMSans', fontSize: 12.5,
-                color: AppColors.text3),
-          ),
-        )),
-        if (_ctrl.text.isNotEmpty)
-          GestureDetector(
-            onTap: () { _ctrl.clear(); _onChanged(''); },
-            child: const Icon(Icons.close_rounded,
-                color: AppColors.text3, size: 16),
-          ),
-      ]),
-    ),
-  );
-
-  // ─── Search results ─────────────────────────────────────────
-  Widget _searchResultsList() {
-    if (_searching) {
-      return const Center(child: SizedBox(width: 20, height: 20,
-        child: CircularProgressIndicator(
-          color: AppColors.accent, strokeWidth: 1.6)));
-    }
-    if (_results.isEmpty) {
-      return Center(child: Padding(
-        padding: const EdgeInsets.all(36),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.search_off_rounded,
-              color: AppColors.text3, size: 28),
-          const SizedBox(height: 10),
-          Text('No matches for "$_query"',
-            style: const TextStyle(fontFamily: 'DMSans', fontSize: 12.5,
-                color: AppColors.text2)),
-          const SizedBox(height: 6),
-          const Text('Try a company name or ticker (e.g. AAPL, RELIANCE, BTC)',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
-                color: AppColors.text3)),
-        ]),
-      ));
-    }
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 100),
-      itemCount: _results.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (_, i) => _SearchRow(
-        result: _results[i],
-        onTap: () => _openTile(
-          ticker:   _results[i].symbol,
-          exchange: _results[i].exchange,
-          name:     _results[i].longName ?? _results[i].shortName,
-          kind:     _results[i].inferredKind,
-        ),
-      ),
+    return BullRefreshIndicator(
+      onRefresh: _refresh,
+      child: _browseSections(),
     );
   }
 
   // ─── Browse mode ────────────────────────────────────────────
   Widget _browseSections() => ListView(
-    padding: const EdgeInsets.only(top: 0, bottom: 100),
+    padding: const EdgeInsets.only(top: 4, bottom: 100),
+    physics: const AlwaysScrollableScrollPhysics(),
     children: [
+      // Hero pulse strip — scrolls away with the rest of the content.
+      MarketPulseStrip(generation: _generation),
       // Asset-class filter chip row
       _filterChipRow(),
       if (_showRail(_AssetClass.all))
-        _Section(title: 'Market Indices',  icon: Icons.show_chart_rounded,
-          color: AppColors.accent,  tiles: _indices,    onTap: _openTileFor),
+        _Rail(title: 'Market Indices', icon: Icons.show_chart_rounded,
+          tintFg: AppColors.accent, tiles: _indices, onTap: _openTileFor,
+          generation: _generation),
       if (_showRail(_AssetClass.stocksIn))
-        _Section(title: 'Trending in India', icon: Icons.flag_rounded,
-          color: AppColors.accent,  tiles: _trendingIn, onTap: _openTileFor,
-          flagEmoji: '🇮🇳'),
+        _Rail(title: 'Trending in India', icon: Icons.local_fire_department_rounded,
+          tintFg: AppColors.red, flagEmoji: '🇮🇳',
+          tiles: _trendingIn, onTap: _openTileFor, generation: _generation),
       if (_showRail(_AssetClass.stocksUs))
-        _Section(title: 'Top US Stocks',     icon: Icons.flag_rounded,
-          color: AppColors.accent2, tiles: _usStocks,   onTap: _openTileFor,
-          flagEmoji: '🇺🇸'),
+        _Rail(title: 'Top US Stocks', icon: Icons.public_rounded,
+          tintFg: AppColors.accent, flagEmoji: '🇺🇸',
+          tiles: _usStocks, onTap: _openTileFor, generation: _generation),
       if (_filter == _AssetClass.all)
-        _Section(title: 'European Stocks',   icon: Icons.flag_rounded,
-          color: AppColors.teal,    tiles: _euStocks,   onTap: _openTileFor,
-          flagEmoji: '🇪🇺'),
+        _Rail(title: 'European Stocks', icon: Icons.public_rounded,
+          tintFg: AppColors.accent, flagEmoji: '🇪🇺',
+          tiles: _euStocks, onTap: _openTileFor, generation: _generation),
       if (_showRail(_AssetClass.etf))
-        _Section(title: 'Global ETFs',       icon: Icons.donut_large_rounded,
-          color: AppColors.dataETF, tiles: _globalEtfs, onTap: _openTileFor),
+        _Rail(title: 'Global ETFs', icon: Icons.donut_large_rounded,
+          tintFg: AppColors.text2, tintBg: AppColors.bg3,
+          tiles: _globalEtfs, onTap: _openTileFor, generation: _generation),
       if (_showRail(_AssetClass.crypto))
-        _Section(title: 'Cryptocurrencies', icon: Icons.currency_bitcoin_rounded,
-          color: AppColors.gold,    tiles: _crypto,     onTap: _openTileFor),
+        _Rail(title: 'Cryptocurrencies', icon: Icons.currency_bitcoin_rounded,
+          tintFg: AppColors.gold,
+          tiles: _crypto, onTap: _openTileFor, generation: _generation),
       if (_showRail(_AssetClass.gold))
-        _Section(title: 'Gold & Precious Metals', icon: Icons.diamond_outlined,
-          color: AppColors.gold,    tiles: _goldRail,   onTap: _openTileFor),
+        _Rail(title: 'Gold & Precious Metals', icon: Icons.diamond_rounded,
+          tintFg: AppColors.gold,
+          tiles: _goldRail, onTap: _openTileFor, generation: _generation),
       if (_filter == _AssetClass.all)
-        _Section(title: 'Currencies vs INR', icon: Icons.currency_exchange_rounded,
-          color: AppColors.teal,    tiles: _currencies, onTap: _openTileFor),
+        _Rail(title: 'Currencies vs INR', icon: Icons.swap_horiz_rounded,
+          tintFg: AppColors.text2, tintBg: AppColors.bg3,
+          tiles: _currencies, onTap: _openTileFor, generation: _generation),
       // MF & Bonds rails currently have no curated tiles — show a tasteful
-      // empty card when the user filters down to them so we don't pretend
-      // to have data we don't.
+      // empty card when the user filters down to them.
       if (_filter == _AssetClass.mf)
         const _EmptyRailNote(label: 'Mutual Fund discovery rails coming soon'),
       if (_filter == _AssetClass.bonds)
         const _EmptyRailNote(label: 'Bond discovery rails coming soon'),
-      const SizedBox(height: 16),
+      const SizedBox(height: 24),
     ],
   );
 
@@ -427,331 +293,66 @@ class _DiscoverSectionsState extends ConsumerState<DiscoverSections>
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Section — labelled horizontal carousel of _MarketCard widgets
+//  Rail — RailSectionHeader + horizontal carousel of AnimatedStatCards
 // ─────────────────────────────────────────────────────────────
-class _Section extends ConsumerWidget {
+class _Rail extends StatelessWidget {
   final String title;
   final IconData icon;
-  final Color color;
+  final Color tintFg;
+  final Color? tintBg;
+  final String? flagEmoji;
   final List<_MarketTile> tiles;
   final ValueChanged<_MarketTile> onTap;
-  final String? flagEmoji;
-  const _Section({
-    required this.title, required this.icon, required this.color,
-    required this.tiles, required this.onTap, this.flagEmoji,
+  final int generation;
+
+  const _Rail({
+    required this.title,
+    required this.icon,
+    required this.tintFg,
+    required this.tiles,
+    required this.onTap,
+    required this.generation,
+    this.tintBg,
+    this.flagEmoji,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
-        child: Row(children: [
-          if (flagEmoji != null)
-            Padding(padding: const EdgeInsets.only(right: 8),
-              child: Text(flagEmoji!, style: const TextStyle(fontSize: 16)))
-          else
-            Padding(padding: const EdgeInsets.only(right: 8),
-              child: Container(
-                width: 22, height: 22,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(6)),
-                alignment: Alignment.center,
-                child: Icon(icon, size: 13, color: color))),
-          Text(title, style: const TextStyle(fontFamily: 'DMSans',
-              fontSize: 13.5, fontWeight: FontWeight.w700,
-              color: AppColors.text)),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: AppColors.bg2,
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: AppColors.border)),
-            child: Text('${tiles.length}',
-              style: const TextStyle(fontFamily: 'DMMono', fontSize: 9.5,
-                  color: AppColors.text3)),
-          ),
-        ]),
-      ),
-      SizedBox(
-        height: 108,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: tiles.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
-          itemBuilder: (_, i) => _MarketCard(
-            tile: tiles[i],
-            onTap: () => onTap(tiles[i]),
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        RailSectionHeader(
+          title: title,
+          icon: icon,
+          tintFg: tintFg,
+          tintBg: tintBg,
+          count: tiles.length,
+          flagEmoji: flagEmoji,
+          onSeeAll: null, // See-all is intentionally a v2+ stub for now.
+        ),
+        SizedBox(
+          height: 124,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: tiles.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (_, i) {
+              final t = tiles[i];
+              return AnimatedStatCard(
+                key: ValueKey('${t.ticker}-$generation'),
+                ticker: t.ticker,
+                name: t.name,
+                exchange: t.exchange,
+                kind: t.kind,
+                mountIndex: i,
+                onTap: () => onTap(t),
+              );
+            },
           ),
         ),
-      ),
-    ]);
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Card with auto-loaded LTP + day %
-// ─────────────────────────────────────────────────────────────
-class _MarketCard extends ConsumerStatefulWidget {
-  final _MarketTile tile;
-  final VoidCallback onTap;
-  const _MarketCard({required this.tile, required this.onTap});
-  @override
-  ConsumerState<_MarketCard> createState() => _MarketCardState();
-}
-
-class _MarketCardState extends ConsumerState<_MarketCard> {
-  QuoteMeta? _meta;
-  bool _loaded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-  }
-
-  Future<void> _load() async {
-    final svc = ref.read(chartDataServiceProvider);
-    final m = await svc.fetchQuote(widget.tile.ticker);
-    if (!mounted) return;
-    setState(() {
-      _meta = m;
-      _loaded = true;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t   = widget.tile;
-    final m   = _meta;
-    final ltp = m?.regularMarketPrice;
-    final pc  = m?.previousClose;
-    final pct = (ltp != null && pc != null && pc != 0)
-        ? ((ltp - pc) / pc) * 100 : null;
-    final up = (pct ?? 0) >= 0;
-    final col = up ? AppColors.green : AppColors.red;
-    final currency = m?.currency ?? _inferCurrency(t.exchange);
-
-    return GestureDetector(
-      onTap: widget.onTap,
-      child: Container(
-        width: 152,
-        padding: const EdgeInsets.all(11),
-        decoration: BoxDecoration(
-          color: AppColors.bg2,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border)),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(children: [
-              Expanded(child: Text(
-                _displayTicker(t.ticker),
-                style: const TextStyle(fontFamily: 'DMMono', fontSize: 11.5,
-                  fontWeight: FontWeight.w700, color: AppColors.text),
-                maxLines: 1, overflow: TextOverflow.ellipsis)),
-              Text(_flagFor(t.exchange), style: const TextStyle(fontSize: 12)),
-            ]),
-            const SizedBox(height: 4),
-            Text(t.name, style: const TextStyle(
-              fontFamily: 'DMSans', fontSize: 11, color: AppColors.text2,
-              height: 1.25), maxLines: 2, overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 6),
-            if (!_loaded) const _ShimmerBar()
-            else if (ltp != null) Row(children: [
-              Expanded(child: Text(
-                '${_currencySign(currency)}${_fmtNum(ltp)}',
-                style: const TextStyle(fontFamily: 'DMMono', fontSize: 12,
-                  fontWeight: FontWeight.w700, color: AppColors.text,
-                  fontFeatures: [
-                    FontFeature.tabularFigures(),
-                    FontFeature.liningFigures(),
-                  ]),
-                maxLines: 1, overflow: TextOverflow.ellipsis)),
-              if (pct != null) Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                decoration: BoxDecoration(
-                  color: col.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(3)),
-                child: Text(
-                  '${up ? "+" : ""}${pct.toStringAsFixed(2)}%',
-                  style: TextStyle(fontFamily: 'DMMono', fontSize: 9.5,
-                    fontWeight: FontWeight.w700, color: col)),
-              ),
-            ])
-            else const Text('—',
-              style: TextStyle(fontFamily: 'DMMono', fontSize: 11,
-                  color: AppColors.text3)),
-          ],
-        ),
-      ),
+      ],
     );
-  }
-
-  String _displayTicker(String t) {
-    if (t.endsWith('=X')) return t.substring(0, t.length - 2);
-    return t;
-  }
-
-  String _currencySign(String currency) {
-    switch (currency.toUpperCase()) {
-      case 'INR': return '₹';
-      case 'USD': return '\$';
-      case 'EUR': return '€';
-      case 'GBP': return '£';
-      case 'JPY': return '¥';
-      case 'HKD': return 'HK\$';
-      case 'CNY': case 'RMB': return '¥';
-      default:    return '';
-    }
-  }
-
-  String _fmtNum(double v) {
-    if (v.abs() >= 100000) return v.toStringAsFixed(0);
-    if (v.abs() >= 100)    return v.toStringAsFixed(1);
-    if (v.abs() >= 1)      return v.toStringAsFixed(2);
-    return v.toStringAsFixed(4);
-  }
-
-  String _flagFor(String code) {
-    switch (code) {
-      case 'NSI': case 'BSE': return '🇮🇳';
-      case 'NMS': case 'NYQ': case 'NCM': case 'PCX': return '🇺🇸';
-      case 'LSE': return '🇬🇧';
-      case 'GER': case 'XETRA': case 'FRA': return '🇩🇪';
-      case 'PAR': return '🇫🇷';
-      case 'AMS': return '🇳🇱';
-      case 'EBS': case 'SWX': return '🇨🇭';
-      case 'TYO': return '🇯🇵';
-      case 'HKG': return '🇭🇰';
-      case 'SHH': case 'SHZ': return '🇨🇳';
-      case 'CCC': return '🪙';
-      case 'CCY': return '💱';
-      default:    return '🌐';
-    }
-  }
-
-  String _inferCurrency(String exch) {
-    switch (exch) {
-      case 'NSI': case 'BSE': return 'INR';
-      case 'NMS': case 'NYQ': case 'PCX': return 'USD';
-      case 'LSE': return 'GBP';
-      case 'GER': case 'FRA': case 'AMS': case 'PAR': return 'EUR';
-      case 'EBS': return 'CHF';
-      case 'TYO': return 'JPY';
-      case 'HKG': return 'HKD';
-      case 'SHH': case 'SHZ': return 'CNY';
-      case 'CCY': return 'INR';
-      case 'CCC': return 'USD';
-      default:    return '';
-    }
-  }
-}
-
-class _ShimmerBar extends StatelessWidget {
-  const _ShimmerBar();
-  @override
-  Widget build(BuildContext context) => Container(
-    height: 12, width: 70,
-    decoration: BoxDecoration(
-      color: AppColors.bg3,
-      borderRadius: BorderRadius.circular(3)),
-  );
-}
-
-// ─── Search result row ───────────────────────────────────────
-class _SearchRow extends StatelessWidget {
-  final SearchResult result;
-  final VoidCallback onTap;
-  const _SearchRow({required this.result, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final chipColor = _typeColor(result.quoteType);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
-        decoration: BoxDecoration(
-          color: AppColors.bg2,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border)),
-        child: Row(children: [
-          Container(
-            width: 38, height: 38,
-            decoration: BoxDecoration(
-              color: AppColors.bg3,
-              borderRadius: BorderRadius.circular(9)),
-            alignment: Alignment.center,
-            child: Text(result.flag, style: const TextStyle(fontSize: 17)),
-          ),
-          const SizedBox(width: 11),
-          Expanded(child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Expanded(child: Text(result.symbol,
-                  style: const TextStyle(fontFamily: 'DMMono', fontSize: 12.5,
-                    fontWeight: FontWeight.w700, color: AppColors.text),
-                  maxLines: 1, overflow: TextOverflow.ellipsis)),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 5, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: chipColor.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(3)),
-                  child: Text(_typeLabel(result.quoteType),
-                    style: TextStyle(fontFamily: 'DMSans', fontSize: 8.5,
-                      fontWeight: FontWeight.w700, color: chipColor,
-                      letterSpacing: 0.3)),
-                ),
-              ]),
-              const SizedBox(height: 1),
-              Text(result.longName ?? result.shortName,
-                style: const TextStyle(fontFamily: 'DMSans',
-                  fontSize: 11.5, color: AppColors.text2),
-                maxLines: 1, overflow: TextOverflow.ellipsis),
-              if (result.exchDisp != null && result.exchDisp!.isNotEmpty)
-                Text(result.exchDisp!,
-                  style: const TextStyle(fontFamily: 'DMSans',
-                    fontSize: 10, color: AppColors.text3)),
-            ],
-          )),
-          const SizedBox(width: 6),
-          const Icon(Icons.chevron_right_rounded,
-              color: AppColors.text3, size: 18),
-        ]),
-      ),
-    );
-  }
-
-  Color _typeColor(String t) {
-    switch (t.toUpperCase()) {
-      case 'EQUITY':         return AppColors.accent;
-      case 'ETF':            return AppColors.dataETF;
-      case 'INDEX':          return AppColors.gold;
-      case 'CRYPTOCURRENCY': return AppColors.accent2;
-      case 'CURRENCY':       return AppColors.teal;
-      case 'MUTUALFUND':     return AppColors.teal;
-      case 'FUTURE':         return AppColors.coral;
-      default:               return AppColors.text2;
-    }
-  }
-  String _typeLabel(String t) {
-    switch (t.toUpperCase()) {
-      case 'EQUITY':         return 'STOCK';
-      case 'ETF':            return 'ETF';
-      case 'INDEX':          return 'INDEX';
-      case 'CRYPTOCURRENCY': return 'CRYPTO';
-      case 'CURRENCY':       return 'FOREX';
-      case 'MUTUALFUND':     return 'FUND';
-      case 'FUTURE':         return 'FUTURE';
-      default:               return t.toUpperCase();
-    }
   }
 }
 

@@ -10,6 +10,7 @@ import '../../../shared/services/api_service.dart';
 import '../../../core/constants/api_constants.dart';
 import '../services/chart_data_service.dart';
 import '../widgets/discover_sections.dart';
+import '../widgets/full_screen_search.dart';
 import 'holding_chart_screen.dart';
 
 // ── Enums ──────────────────────────────────────────────────
@@ -57,10 +58,8 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
   _SortMode _sort = _SortMode.value;
   OverlayEntry? _toastOverlay;
 
-  // FocusNode for the Discover tab's sticky search field, owned at the
-  // screen level so the top app-bar's search icon (only visible on the
-  // Discover tab) can `.requestFocus()` to jump straight into typing.
-  final FocusNode _discoverFocus = FocusNode();
+  // (Discover search is now a full-screen modal pushed from the header
+  // icon — no embedded FocusNode is needed at the screen level any more.)
 
   // Prefetch is fire-and-forget — kick it off once per screen mount so
   // we don't hammer the network on every rebuild when other providers
@@ -82,7 +81,6 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
   void dispose() {
     _topCtrl.dispose();
     _tabCtrl.dispose();
-    _discoverFocus.dispose();
     _toastOverlay?.remove();
     super.dispose();
   }
@@ -431,7 +429,7 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
                   stocksValue: stocksValue, mfValue: mfValue,
                   etfValue: etfValue, commValue: commValue,
                 ),
-                _DiscoverTabContent(searchFocusNode: _discoverFocus),
+                const _DiscoverTabContent(),
                 const _IpoTabContent(),
               ],
             ),
@@ -440,6 +438,30 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
       ),
     );
   }
+
+  // ─────────────────────────────────────────────────────────────
+  //  Search modal route — full-screen, transparent barrier, fade + slight
+  //  upward slide. Exit faster than enter to keep dismiss snappy.
+  // ─────────────────────────────────────────────────────────────
+  Route<void> _buildSearchRoute() => PageRouteBuilder<void>(
+        opaque: false,
+        barrierColor: Colors.transparent,
+        transitionDuration: const Duration(milliseconds: 220),
+        reverseTransitionDuration: const Duration(milliseconds: 180),
+        pageBuilder: (_, __, ___) => const FullScreenSearchSheet(),
+        transitionsBuilder: (_, anim, __, child) {
+          final fade = CurvedAnimation(
+              parent: anim, curve: Curves.easeOutCubic);
+          final slide = Tween<Offset>(
+                  begin: const Offset(0, 0.04), end: Offset.zero)
+              .animate(CurvedAnimation(
+                  parent: anim, curve: Curves.easeOutCubic));
+          return FadeTransition(
+            opacity: fade,
+            child: SlideTransition(position: slide, child: child),
+          );
+        },
+      );
 
   // ─────────────────────────────────────────────────────────────
   //  Top app-bar — "Investments" title + per-tab trailing icon.
@@ -456,7 +478,7 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
       case 1:
         trailing = _HeaderBtn(
           icon: Icons.search_rounded,
-          onTap: () => _discoverFocus.requestFocus(),
+          onTap: () => Navigator.of(context).push(_buildSearchRoute()),
         );
       case 2:
       default:
@@ -673,8 +695,7 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen>
 //  loaded carousel quotes survive swipes between top tabs.
 // ─────────────────────────────────────────────────────────────
 class _DiscoverTabContent extends StatefulWidget {
-  final FocusNode searchFocusNode;
-  const _DiscoverTabContent({required this.searchFocusNode});
+  const _DiscoverTabContent();
 
   @override
   State<_DiscoverTabContent> createState() => _DiscoverTabContentState();
@@ -688,7 +709,7 @@ class _DiscoverTabContentState extends State<_DiscoverTabContent>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    return DiscoverSections(searchFocusNode: widget.searchFocusNode);
+    return const DiscoverSections();
   }
 }
 

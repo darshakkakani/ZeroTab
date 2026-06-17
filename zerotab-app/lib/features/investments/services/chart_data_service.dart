@@ -635,6 +635,15 @@ class ChartDataService {
     }
   }
 
+  /// Convenience sugar over `fetchYahoo` used by Discover's mini-sparkline
+  /// cards. Intentionally identical in behaviour to:
+  ///     fetchYahoo(ticker: ticker, tf: ChartTimeframes.intraday1d)
+  /// — no new caching, no new network path. The named method exists purely
+  /// so the call site reads as "give me an intraday spark for this ticker"
+  /// instead of "give me a 1d/1m bar series".
+  Future<ChartFetchResult> fetchSparkline(String ticker) =>
+      fetchYahoo(ticker: ticker, tf: ChartTimeframes.intraday1d);
+
   /// Lightweight quote — just the meta block (price + day change +
   /// 52-week range), no candles. 60-s in-memory cache because Discover
   /// cards refresh together and we want to avoid hammering Yahoo for
