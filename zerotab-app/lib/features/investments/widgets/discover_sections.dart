@@ -21,7 +21,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../screens/holding_chart_screen.dart';
+import '../screens/what_if_screen.dart';
 import '../services/chart_data_service.dart' show HoldingKind;
+import '../services/what_if_service.dart' show WhatIfMode;
 import '../../../shared/models/models.dart';
 import 'animated_stat_card.dart';
 import 'bull_refresh_indicator.dart';
@@ -555,6 +557,22 @@ class _DiscoverSectionsState extends ConsumerState<DiscoverSections>
           // is now the single source of truth for index quick-look prices.
           _filterChipRow(),
 
+          // ── What If hero card ──
+          // Visible across every filter — the killer feature deserves a
+          // top-of-screen entry point, not just a 4th-tab on each chart
+          // detail (which is too buried for a discovery-stage tool).
+          _WhatIfHeroCard(
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const WhatIfScreen(
+                initialSymbol:   'NVDA',
+                initialName:     'NVIDIA',
+                initialExchange: 'NMS',
+                initialKind:     HoldingKind.stock,
+                initialMode:     WhatIfMode.lumpSum,
+              ),
+            )),
+          ),
+
           // ── Coming-soon placeholder for MF + Bonds ────────────
           // Per §1 of the spec: one full-width muted card, no fake grids.
           if (_filter == _AssetClass.mf)
@@ -954,6 +972,130 @@ class IpoPlaceholder extends StatelessWidget {
           style: TextStyle(fontFamily: 'DMSans', fontSize: 11,
               color: AppColors.text2, height: 1.5)),
       ]),
+    ),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  WHAT-IF HERO CARD
+//  Above-the-fold entry point to the What If calculator (the
+//  killer feature). Lives just below the asset-class filter chip
+//  row so it's visible regardless of which filter the user has
+//  active. Subtle gradient + accent-tinted icon — distinct enough
+//  to read as "feature" without competing with the rail cards.
+// ─────────────────────────────────────────────────────────────
+class _WhatIfHeroCard extends StatelessWidget {
+  final VoidCallback onTap;
+  const _WhatIfHeroCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
+            colors: [Color(0xFF1B1442), Color(0xFF120E2C)],
+          ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: AppColors.accent.withValues(alpha: 0.35),
+            width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.accent.withValues(alpha: 0.18),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(children: [
+          // Time-machine icon in an accent-tinted badge.
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
+                colors: [Color(0xFF7B5FFF), Color(0xFFE8A422)],
+              ),
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.accent.withValues(alpha: 0.40),
+                  blurRadius: 8,
+                ),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: const Icon(Icons.auto_graph_rounded,
+                color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 12),
+          // Copy: hero label + supporting line.
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(children: [
+                  const Text('What If', style: TextStyle(
+                    fontFamily: 'DMSans', fontSize: 15,
+                    fontWeight: FontWeight.w800, color: AppColors.text,
+                    letterSpacing: -0.2,
+                  )),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.gold.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                          color: AppColors.gold.withValues(alpha: 0.40)),
+                    ),
+                    child: const Text('NEW', style: TextStyle(
+                      fontFamily: 'DMSans', fontSize: 8.5,
+                      fontWeight: FontWeight.w800, color: AppColors.gold,
+                      letterSpacing: 0.5,
+                    )),
+                  ),
+                ]),
+                const SizedBox(height: 3),
+                const Text(
+                  'Backtest any stock · Lump-sum or SIP · vs FD/Nifty/Gold',
+                  style: TextStyle(fontFamily: 'DMSans',
+                      fontSize: 10.5, color: AppColors.text3,
+                      height: 1.35),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Trailing chevron + "Open" hint.
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: AppColors.accent.withValues(alpha: 0.20),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                  color: AppColors.accent.withValues(alpha: 0.45)),
+            ),
+            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+              Text('Open', style: TextStyle(
+                fontFamily: 'DMSans', fontSize: 10.5,
+                fontWeight: FontWeight.w700, color: AppColors.accent,
+              )),
+              SizedBox(width: 3),
+              Icon(Icons.arrow_forward_rounded,
+                  size: 12, color: AppColors.accent),
+            ]),
+          ),
+        ]),
+      ),
     ),
   );
 }
