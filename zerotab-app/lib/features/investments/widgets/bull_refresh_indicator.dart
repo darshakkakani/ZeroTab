@@ -233,8 +233,8 @@ class _BullRefreshIndicatorState extends State<BullRefreshIndicator>
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             CustomPaint(
-                              size: const Size(double.infinity, 42),
-                              painter: _MarketPulsePainter(
+                              size: const Size(double.infinity, 48),
+                              painter: _ZeroTabChargePainter(
                                 phase: _phase,
                                 dragValue: dragValue,
                                 loop: reduceMotion ? 0.5 : _loopCtrl.value,
@@ -269,231 +269,216 @@ class _BullRefreshIndicatorState extends State<BullRefreshIndicator>
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  _MarketPulsePainter — premium pull-to-refresh.
+//  _ZeroTabChargePainter — the brand pull-to-refresh emblem.
 //
-//  Draws an upward-trending stock chart that progressively reveals
-//  itself as the user pulls. Replaces the original 5-candle painter
-//  with something far more brand-aligned for a finance app:
+//  A coin/ring with a gold upward arrow inside, drawn as a single
+//  custom painter so the animation states feel coherent across
+//  pull → armed → loading → complete.
 //
-//    • Smooth cubic sparkline through 9 control points (realistic
-//      "rally with a dip" shape — looks like an actual chart).
-//    • Soft accent-colored glow under the stroke (blurred 4 dp pass
-//      then a sharp 2.2 dp stroke on top).
-//    • Gradient fill under the line (accent → transparent), only
-//      from the leftmost point to the visible endpoint.
-//    • Glowing endpoint dot with a halo that BREATHES during the
-//      loading phase (sin-wave loop tied to the global loop ctrl).
-//    • An animated ↑ arrow appears above the endpoint when armed.
-//    • Error state swaps the line to red + draws an ✗ on the endpoint.
+//  Layers (back to front):
+//   1. Soft accent halo (blurred behind the coin, opacity scales
+//      with pull progress)
+//   2. Inner bg2 wash filling the coin's interior so the arrow has
+//      a clean platter to sit on
+//   3. Outer ring stroke with a SWEEP-gradient (accent → gold →
+//      accent2 → accent) — the ring spins during loading, locking
+//      to 0 in armed/complete
+//   4. Gold upward arrow centered inside (linear-gradient gold tip
+//      to amber base) with a 0.7-dp white highlight stroke
+//   5. Loading: six orbital particles at radius (ring+8) drifting
+//      counter to the ring's rotation, each on its own sin-wave
+//      opacity cycle — gives a "compounding returns" feel
+//   6. Armed: a second concentric ring 4 dp outside the coin
+//      flashes briefly in gold
+//   7. Errored complete: a red ✗ overlays the arrow
 //
-//  Phase behavior:
-//    • idle / dragging:  revealT = clamp(dragValue, 0, 1)
-//    • armed:            revealT = 1, vivid accent
-//    • loading:          revealT = 0.4 + 0.6 * loop (chart visibly
-//                        re-draws itself in a smooth loop)
-//    • complete:         revealT = 1, fades via parent opacity
+//  Phase scaling:
+//   • idle:                 not drawn
+//   • dragging(t):          scale 0→1 by t, tilt 0→30°
+//   • armed:                scale 1.05, rotation 0
+//   • loading:              scale 1.00 ± 0.05*sin, rotation = loop·2π
+//   • complete:             scale 1.0, rotation 0
 // ═══════════════════════════════════════════════════════════════
-class _MarketPulsePainter extends CustomPainter {
+class _ZeroTabChargePainter extends CustomPainter {
   final _IndicatorPhase phase;
   final double dragValue;
   final double loop;
   final bool errored;
 
-  _MarketPulsePainter({
+  _ZeroTabChargePainter({
     required this.phase,
     required this.dragValue,
     required this.loop,
     required this.errored,
   });
 
-  // Normalized control points (x, y in [0..1]; y inverted so 0 = top).
-  // Shape: starts low-left, dips once for realism, rallies hard to top-right.
-  static const List<Offset> _chart = <Offset>[
-    Offset(0.00, 0.82),
-    Offset(0.12, 0.68),
-    Offset(0.24, 0.74),
-    Offset(0.36, 0.55),
-    Offset(0.50, 0.62),
-    Offset(0.64, 0.42),
-    Offset(0.78, 0.28),
-    Offset(0.90, 0.16),
-    Offset(1.00, 0.06),
-  ];
-
   @override
   void paint(Canvas canvas, Size size) {
     if (size.width <= 0 || size.height <= 0) return;
+    final cx = size.width / 2;
+    final cy = size.height / 2;
 
-    // Center the chart in a 220-dp wide box (or smaller on narrow phones).
-    final chartW = math.min(size.width - 24, 220.0);
-    if (chartW < 80) return;
-    final chartH = size.height - 12; // 6 dp top + 6 dp bottom breathing
-    final left = (size.width - chartW) / 2;
-    final top = 6.0;
-    final rect = Rect.fromLTWH(left, top, chartW, chartH);
-
-    // Compute how much of the chart to reveal in this frame.
-    final double revealT;
+    // Per-phase pull / rotation / pulse.
+    final double pullT;
+    final double rotation;
+    final double pulse;
     switch (phase) {
       case _IndicatorPhase.idle:
+        return;
       case _IndicatorPhase.dragging:
-        revealT = dragValue.clamp(0.0, 1.0);
+        pullT    = dragValue.clamp(0.0, 1.0);
+        rotation = pullT * math.pi / 6;        // gentle tilt while pulling
+        pulse    = 1.0;
         break;
       case _IndicatorPhase.armed:
-        revealT = 1.0;
+        pullT    = 1.0;
+        rotation = 0;
+        pulse    = 1.05;
         break;
       case _IndicatorPhase.loading:
-        // Reveal eases in a smooth wave — chart appears to re-draw itself.
-        revealT = 0.45 + 0.55 * loop;
+        pullT    = 1.0;
+        rotation = loop * 2 * math.pi;
+        pulse    = 1.0 + 0.05 * math.sin(loop * 2 * math.pi);
         break;
       case _IndicatorPhase.complete:
-        revealT = 1.0;
+        pullT    = 1.0;
+        rotation = 0;
+        pulse    = 1.0;
         break;
     }
-    if (revealT < 0.02) return;
+    if (pullT < 0.03) return;
 
-    // Build the visible point list. Anything past revealT gets clipped
-    // to the interpolated point on the last segment.
-    final pts = <Offset>[];
-    for (var i = 0; i < _chart.length; i++) {
-      final p = _chart[i];
-      if (p.dx <= revealT) {
-        pts.add(Offset(
-          rect.left + p.dx * rect.width,
-          rect.top  + p.dy * rect.height,
-        ));
-      } else {
-        // Interpolate the endpoint on the segment that crosses revealT.
-        if (i == 0) break;
-        final prev = _chart[i - 1];
-        final segT = (revealT - prev.dx) / (p.dx - prev.dx);
-        final iy   = prev.dy + (p.dy - prev.dy) * segT;
-        pts.add(Offset(
-          rect.left + revealT * rect.width,
-          rect.top  + iy      * rect.height,
-        ));
-        break;
+    const baseR  = 17.0;
+    final radius = baseR * pullT * pulse;
+    final accent  = errored ? AppColors.red  : AppColors.accent;
+    final accent2 = errored ? AppColors.red  : AppColors.accent2;
+    final gold    = AppColors.gold;
+
+    // 1. Soft halo
+    canvas.drawCircle(
+      Offset(cx, cy),
+      radius + 14,
+      Paint()
+        ..color = accent.withOpacity(0.20 * pullT)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 9),
+    );
+
+    // 2. Inner fill (lets the arrow sit on a clean platter)
+    canvas.drawCircle(
+      Offset(cx, cy),
+      radius - 2,
+      Paint()..color = AppColors.bg2.withOpacity(0.88),
+    );
+
+    // 3. Outer ring with sweep-gradient (rotates during loading)
+    canvas.save();
+    canvas.translate(cx, cy);
+    canvas.rotate(rotation);
+    final ringRect = Rect.fromCircle(center: Offset.zero, radius: radius);
+    canvas.drawCircle(
+      Offset.zero,
+      radius,
+      Paint()
+        ..shader = SweepGradient(
+          colors: errored
+              ? [AppColors.red, AppColors.red.withOpacity(0.5), AppColors.red]
+              : [accent, gold, accent2, accent],
+          stops: const [0.0, 0.35, 0.70, 1.0],
+        ).createShader(ringRect)
+        ..style       = PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..strokeCap   = StrokeCap.round,
+    );
+    canvas.restore();
+
+    // 4. Gold upward arrow ↑ centered in the coin
+    final arrowSize = radius * 0.50;
+    final arrowPath = Path()
+      ..moveTo(cx,                       cy - arrowSize)
+      ..lineTo(cx + arrowSize * 0.55,    cy - arrowSize * 0.15)
+      ..lineTo(cx + arrowSize * 0.25,    cy - arrowSize * 0.15)
+      ..lineTo(cx + arrowSize * 0.25,    cy + arrowSize * 0.55)
+      ..lineTo(cx - arrowSize * 0.25,    cy + arrowSize * 0.55)
+      ..lineTo(cx - arrowSize * 0.25,    cy - arrowSize * 0.15)
+      ..lineTo(cx - arrowSize * 0.55,    cy - arrowSize * 0.15)
+      ..close();
+    canvas.drawPath(
+      arrowPath,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end:   Alignment.bottomCenter,
+          colors: [Color(0xFFFFD56E), Color(0xFFE8A422)],
+        ).createShader(Rect.fromCenter(
+          center: Offset(cx, cy),
+          width:  arrowSize * 1.2,
+          height: arrowSize * 1.6,
+        )),
+    );
+    canvas.drawPath(
+      arrowPath,
+      Paint()
+        ..color       = Colors.white.withOpacity(0.35)
+        ..style       = PaintingStyle.stroke
+        ..strokeWidth = 0.7,
+    );
+
+    // 5. Loading: six orbital particles at radius+8
+    if (phase == _IndicatorPhase.loading) {
+      const numParticles = 6;
+      final orbitR = radius + 8;
+      for (var i = 0; i < numParticles; i++) {
+        final pOff   = i * (2 * math.pi / numParticles);
+        final angle  = -rotation + pOff;
+        final r      = orbitR + 2 * math.sin(loop * 4 * math.pi + i * 0.7);
+        final px     = cx + math.cos(angle) * r;
+        final py     = cy + math.sin(angle) * r;
+        final alpha  = 0.5 + 0.5 *
+            math.sin(loop * 2 * math.pi + i * 0.4).abs();
+        canvas.drawCircle(
+          Offset(px, py),
+          1.5,
+          Paint()..color = accent.withOpacity(alpha * 0.9),
+        );
       }
     }
-    if (pts.length < 2) return;
 
-    // Build a cubic-smoothed path through pts — gives the sparkline an
-    // organic, "drawn-by-hand" curvature instead of jagged polylines.
-    final path = Path()..moveTo(pts.first.dx, pts.first.dy);
-    for (var i = 1; i < pts.length; i++) {
-      final p0 = pts[i - 1];
-      final p1 = pts[i];
-      final cp1 = Offset((p0.dx + p1.dx) / 2, p0.dy);
-      final cp2 = Offset((p0.dx + p1.dx) / 2, p1.dy);
-      path.cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, p1.dx, p1.dy);
-    }
-
-    // Brand color selection. Accent on success, red on error. Armed +
-    // loading get the fully saturated accent; pre-arm uses 70% opacity
-    // so the chart "lights up" at the threshold.
-    final lineColor = errored
-        ? AppColors.red
-        : (phase == _IndicatorPhase.armed || phase == _IndicatorPhase.loading
-            ? AppColors.accent
-            : AppColors.accent.withOpacity(0.70));
-
-    // ── Gradient fill below the line ──
-    final fillPath = Path.from(path)
-      ..lineTo(pts.last.dx, rect.bottom)
-      ..lineTo(pts.first.dx, rect.bottom)
-      ..close();
-    canvas.drawPath(fillPath, Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter, end: Alignment.bottomCenter,
-        colors: [
-          lineColor.withOpacity(0.34),
-          lineColor.withOpacity(0.00),
-        ],
-      ).createShader(rect));
-
-    // ── Soft glow under the stroke (blurred 4 dp) ──
-    canvas.drawPath(path, Paint()
-      ..color = lineColor.withOpacity(0.55)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 4
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4));
-
-    // ── Sharp stroke on top ──
-    canvas.drawPath(path, Paint()
-      ..color = lineColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.2
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round);
-
-    // ── Endpoint: halo + dot + inner-ring + (optional) arrow/X ──
-    final endX = pts.last.dx;
-    final endY = pts.last.dy;
-
-    double dotR = 3.5;
-    double haloR = 6.0;
-    double haloAlpha = 0.35;
-    if (phase == _IndicatorPhase.armed) {
-      dotR = 4.5;
-      haloR = 9.0;
-      haloAlpha = 0.50;
-    } else if (phase == _IndicatorPhase.loading) {
-      // sin-wave breathing pulse
-      final b = (1 + math.sin(loop * 2 * math.pi)) / 2; // 0..1
-      dotR = 4.0 + b * 1.6;
-      haloR = 8.0 + b * 6.0;
-      haloAlpha = 0.28 + b * 0.32;
-    }
-    canvas.drawCircle(Offset(endX, endY), haloR,
-        Paint()..color = lineColor.withOpacity(haloAlpha));
-    canvas.drawCircle(Offset(endX, endY), dotR,
-        Paint()..color = lineColor);
-    canvas.drawCircle(Offset(endX, endY), dotR,
-        Paint()
-          ..color = Colors.white.withOpacity(0.75)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1);
-
-    // ── Armed: ↑ arrow above the endpoint ──
+    // 6. Armed: gold flash ring 4 dp outside the coin
     if (phase == _IndicatorPhase.armed && !errored) {
-      final ax = endX;
-      final ay = endY - 10;
-      final arrow = Path()
-        ..moveTo(ax, ay - 6)
-        ..lineTo(ax - 4, ay - 1)
-        ..moveTo(ax, ay - 6)
-        ..lineTo(ax + 4, ay - 1)
-        ..moveTo(ax, ay - 6)
-        ..lineTo(ax, ay + 2);
-      canvas.drawPath(arrow, Paint()
-        ..color = lineColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.6
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round);
+      canvas.drawCircle(
+        Offset(cx, cy),
+        radius + 4,
+        Paint()
+          ..color       = gold.withOpacity(0.40)
+          ..style       = PaintingStyle.stroke
+          ..strokeWidth = 1.5,
+      );
     }
 
-    // ── Errored complete: ✗ over the endpoint ──
+    // 7. Errored complete: red ✗ over the arrow
     if (errored && phase == _IndicatorPhase.complete) {
-      final x = Path()
-        ..moveTo(endX - 4, endY - 4)
-        ..lineTo(endX + 4, endY + 4)
-        ..moveTo(endX + 4, endY - 4)
-        ..lineTo(endX - 4, endY + 4);
-      canvas.drawPath(x, Paint()
-        ..color = AppColors.red
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.6
-        ..strokeCap = StrokeCap.round);
+      final xSize = radius * 0.42;
+      final xPaint = Paint()
+        ..color       = AppColors.red
+        ..strokeWidth = 2.0
+        ..strokeCap   = StrokeCap.round;
+      canvas.drawLine(
+        Offset(cx - xSize, cy - xSize),
+        Offset(cx + xSize, cy + xSize),
+        xPaint,
+      );
+      canvas.drawLine(
+        Offset(cx + xSize, cy - xSize),
+        Offset(cx - xSize, cy + xSize),
+        xPaint,
+      );
     }
   }
 
   @override
-  bool shouldRepaint(covariant _MarketPulsePainter old) =>
-      old.phase != phase ||
+  bool shouldRepaint(covariant _ZeroTabChargePainter old) =>
+      old.phase     != phase     ||
       old.dragValue != dragValue ||
-      old.loop != loop ||
-      old.errored != errored;
+      old.loop      != loop      ||
+      old.errored   != errored;
 }

@@ -215,16 +215,12 @@ class _DiscoverSectionsState extends ConsumerState<DiscoverSections>
 
   // ─── Browse mode ────────────────────────────────────────────
   //
-  // Section order (top → bottom) is intentional:
-  //   1. Market Indices            (showSparkline: false — flat at <1% intraday)
-  //   2. Trending in India         (showSparkline: true)
-  //   3. AI & Tech Leaders         (showSparkline: true, accentGradient — spotlight)
-  //   4. Top US Stocks             (showSparkline: true)
-  //   5. Cryptocurrencies          (showSparkline: true — spark IS the value prop)
-  //   6. Gold & Precious Metals    (showSparkline: true — momentum buy)
-  //   7. European Stocks           (showSparkline: false — info-low for IN users)
-  //   8. Global ETFs               (showSparkline: false — slow movers)
-  //   9. Currencies vs INR         (showSparkline: false — <0.5% daily, flat smudge)
+  // Section order — all rails use uniform card chrome (showSparkline=false,
+  // no accentGradient) per the latest user feedback. Mixed treatments read
+  // inconsistent; the clean single style scans much faster.
+  //   1. Market Indices · 2. Trending in India · 3. AI & Tech Leaders
+  //   4. Top US Stocks  · 5. Cryptocurrencies  · 6. Gold & Precious Metals
+  //   7. European Stocks · 8. Global ETFs · 9. Currencies vs INR
   Widget _browseSections() => ListView(
     padding: const EdgeInsets.only(top: 4, bottom: 100),
     physics: const AlwaysScrollableScrollPhysics(),
@@ -243,33 +239,35 @@ class _DiscoverSectionsState extends ConsumerState<DiscoverSections>
         _Rail(title: 'Trending in India', icon: Icons.local_fire_department_rounded,
           tintFg: AppColors.red, flagEmoji: '🇮🇳',
           tiles: _trendingIn,
-          showSparkline: true,
+          showSparkline: false,
           onTap: _openTileFor, generation: _generation),
-      // AI & Tech Leaders — NEW spotlight rail, placed ABOVE Top US Stocks.
+      // AI & Tech Leaders — spotlight rail, placed ABOVE Top US Stocks.
+      // Uniform card chrome — no accent gradient — per user feedback that
+      // mismatched borders across rails read inconsistent.
       if (_showRail(_AssetClass.stocksUs))
         _Rail(title: 'AI & Tech Leaders', icon: Icons.bolt_rounded,
           tintFg: AppColors.accent2,
           tiles: _aiTechLeaders,
-          showSparkline: true,
-          accentGradient: true,
+          showSparkline: false,
+          accentGradient: false,
           onTap: _openTileFor, generation: _generation),
       if (_showRail(_AssetClass.stocksUs))
         _Rail(title: 'Top US Stocks', icon: Icons.public_rounded,
           tintFg: AppColors.accent, flagEmoji: '🇺🇸',
           tiles: _usStocks,
-          showSparkline: true,
+          showSparkline: false,
           onTap: _openTileFor, generation: _generation),
       if (_showRail(_AssetClass.crypto))
         _Rail(title: 'Cryptocurrencies', icon: Icons.currency_bitcoin_rounded,
           tintFg: AppColors.gold,
           tiles: _crypto,
-          showSparkline: true,
+          showSparkline: false,
           onTap: _openTileFor, generation: _generation),
       if (_showRail(_AssetClass.gold))
         _Rail(title: 'Gold & Precious Metals', icon: Icons.diamond_rounded,
           tintFg: AppColors.gold,
           tiles: _goldRail,
-          showSparkline: true,
+          showSparkline: false,
           onTap: _openTileFor, generation: _generation),
       if (_filter == _AssetClass.all)
         _Rail(title: 'European Stocks', icon: Icons.public_rounded,
