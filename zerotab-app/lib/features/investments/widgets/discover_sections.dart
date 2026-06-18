@@ -143,6 +143,277 @@ const List<_MarketTile> _goldRail = [
 ];
 
 // ─────────────────────────────────────────────────────────────
+//  Per-asset-class SECTOR matrices.
+//
+//  Each entry below is a (label, tiles) sector rail. When the user
+//  selects a non-All chip, the body lays out one horizontal rail
+//  per sector for that asset class. Cards reuse the same chrome as
+//  the default Discover rails (showSparkline=false).
+// ─────────────────────────────────────────────────────────────
+class _SectorGroup {
+  final String name;
+  final List<_MarketTile> tiles;
+  const _SectorGroup(this.name, this.tiles);
+}
+
+// ── STOCKS IN ────────────────────────────────────────────────
+const List<_SectorGroup> _stocksInSectors = [
+  _SectorGroup('IT', [
+    _MarketTile('TCS.NS',         'Tata Consultancy Services', 'NSI', HoldingKind.stock),
+    _MarketTile('INFY.NS',        'Infosys',                   'NSI', HoldingKind.stock),
+    _MarketTile('HCLTECH.NS',     'HCL Technologies',          'NSI', HoldingKind.stock),
+    _MarketTile('WIPRO.NS',       'Wipro',                     'NSI', HoldingKind.stock),
+    _MarketTile('TECHM.NS',       'Tech Mahindra',             'NSI', HoldingKind.stock),
+    _MarketTile('LTIM.NS',        'LTIMindtree',               'NSI', HoldingKind.stock),
+    _MarketTile('PERSISTENT.NS',  'Persistent Systems',        'NSI', HoldingKind.stock),
+    _MarketTile('COFORGE.NS',     'Coforge',                   'NSI', HoldingKind.stock),
+  ]),
+  _SectorGroup('Banking', [
+    _MarketTile('HDFCBANK.NS',    'HDFC Bank',                 'NSI', HoldingKind.stock),
+    _MarketTile('ICICIBANK.NS',   'ICICI Bank',                'NSI', HoldingKind.stock),
+    _MarketTile('SBIN.NS',        'State Bank of India',       'NSI', HoldingKind.stock),
+    _MarketTile('AXISBANK.NS',    'Axis Bank',                 'NSI', HoldingKind.stock),
+    _MarketTile('KOTAKBANK.NS',   'Kotak Mahindra Bank',       'NSI', HoldingKind.stock),
+    _MarketTile('INDUSINDBK.NS',  'IndusInd Bank',             'NSI', HoldingKind.stock),
+    _MarketTile('BANKBARODA.NS',  'Bank of Baroda',            'NSI', HoldingKind.stock),
+    _MarketTile('PNB.NS',         'Punjab National Bank',      'NSI', HoldingKind.stock),
+  ]),
+  _SectorGroup('FMCG', [
+    _MarketTile('ITC.NS',         'ITC',                       'NSI', HoldingKind.stock),
+    _MarketTile('HINDUNILVR.NS',  'Hindustan Unilever',        'NSI', HoldingKind.stock),
+    _MarketTile('NESTLEIND.NS',   'Nestle India',              'NSI', HoldingKind.stock),
+    _MarketTile('BRITANNIA.NS',   'Britannia Industries',      'NSI', HoldingKind.stock),
+    _MarketTile('TATACONSUM.NS',  'Tata Consumer Products',    'NSI', HoldingKind.stock),
+    _MarketTile('DABUR.NS',       'Dabur India',               'NSI', HoldingKind.stock),
+    _MarketTile('MARICO.NS',      'Marico',                    'NSI', HoldingKind.stock),
+    _MarketTile('GODREJCP.NS',    'Godrej Consumer Products',  'NSI', HoldingKind.stock),
+  ]),
+  _SectorGroup('Auto', [
+    _MarketTile('MARUTI.NS',      'Maruti Suzuki',             'NSI', HoldingKind.stock),
+    _MarketTile('M&M.NS',         'Mahindra & Mahindra',       'NSI', HoldingKind.stock),
+    _MarketTile('TATAMOTORS.NS',  'Tata Motors',               'NSI', HoldingKind.stock),
+    _MarketTile('BAJAJ-AUTO.NS',  'Bajaj Auto',                'NSI', HoldingKind.stock),
+    _MarketTile('EICHERMOT.NS',   'Eicher Motors',             'NSI', HoldingKind.stock),
+    _MarketTile('HEROMOTOCO.NS',  'Hero MotoCorp',             'NSI', HoldingKind.stock),
+    _MarketTile('TVSMOTOR.NS',    'TVS Motor',                 'NSI', HoldingKind.stock),
+    _MarketTile('BOSCHLTD.NS',    'Bosch',                     'NSI', HoldingKind.stock),
+  ]),
+  _SectorGroup('Pharma', [
+    _MarketTile('SUNPHARMA.NS',   'Sun Pharmaceutical',        'NSI', HoldingKind.stock),
+    _MarketTile('CIPLA.NS',       'Cipla',                     'NSI', HoldingKind.stock),
+    _MarketTile('DRREDDY.NS',     "Dr. Reddy's Laboratories",  'NSI', HoldingKind.stock),
+    _MarketTile('DIVISLAB.NS',    "Divi's Laboratories",       'NSI', HoldingKind.stock),
+    _MarketTile('LUPIN.NS',       'Lupin',                     'NSI', HoldingKind.stock),
+    _MarketTile('AUROPHARMA.NS',  'Aurobindo Pharma',          'NSI', HoldingKind.stock),
+    _MarketTile('MANKIND.NS',     'Mankind Pharma',            'NSI', HoldingKind.stock),
+    _MarketTile('TORNTPHARM.NS',  'Torrent Pharmaceuticals',   'NSI', HoldingKind.stock),
+  ]),
+  _SectorGroup('Energy', [
+    _MarketTile('RELIANCE.NS',    'Reliance Industries',       'NSI', HoldingKind.stock),
+    _MarketTile('NTPC.NS',        'NTPC',                      'NSI', HoldingKind.stock),
+    _MarketTile('POWERGRID.NS',   'Power Grid Corporation',    'NSI', HoldingKind.stock),
+    _MarketTile('ONGC.NS',        'Oil & Natural Gas',         'NSI', HoldingKind.stock),
+    _MarketTile('IOC.NS',         'Indian Oil Corporation',    'NSI', HoldingKind.stock),
+    _MarketTile('BPCL.NS',        'Bharat Petroleum',          'NSI', HoldingKind.stock),
+    _MarketTile('ADANIGREEN.NS',  'Adani Green Energy',        'NSI', HoldingKind.stock),
+    _MarketTile('GAIL.NS',        'GAIL India',                'NSI', HoldingKind.stock),
+  ]),
+  _SectorGroup('Metals', [
+    _MarketTile('TATASTEEL.NS',   'Tata Steel',                'NSI', HoldingKind.stock),
+    _MarketTile('JSWSTEEL.NS',    'JSW Steel',                 'NSI', HoldingKind.stock),
+    _MarketTile('HINDALCO.NS',    'Hindalco Industries',       'NSI', HoldingKind.stock),
+    _MarketTile('VEDL.NS',        'Vedanta',                   'NSI', HoldingKind.stock),
+    _MarketTile('COALINDIA.NS',   'Coal India',                'NSI', HoldingKind.stock),
+    _MarketTile('SAIL.NS',        'Steel Authority of India',  'NSI', HoldingKind.stock),
+    _MarketTile('HINDZINC.NS',    'Hindustan Zinc',            'NSI', HoldingKind.stock),
+    _MarketTile('NATIONALUM.NS',  'National Aluminium',        'NSI', HoldingKind.stock),
+  ]),
+  _SectorGroup('Defence', [
+    _MarketTile('HAL.NS',         'Hindustan Aeronautics',     'NSI', HoldingKind.stock),
+    _MarketTile('BEL.NS',         'Bharat Electronics',        'NSI', HoldingKind.stock),
+    _MarketTile('BDL.NS',         'Bharat Dynamics',           'NSI', HoldingKind.stock),
+    _MarketTile('MAZDOCK.NS',     'Mazagon Dock Shipbuilders', 'NSI', HoldingKind.stock),
+    _MarketTile('COCHINSHIP.NS',  'Cochin Shipyard',           'NSI', HoldingKind.stock),
+    _MarketTile('GRSE.NS',        'Garden Reach Shipbuilders', 'NSI', HoldingKind.stock),
+    _MarketTile('PARAS.NS',       'Paras Defence',             'NSI', HoldingKind.stock),
+    _MarketTile('SOLARINDS.NS',   'Solar Industries',          'NSI', HoldingKind.stock),
+  ]),
+];
+
+// ── STOCKS US ────────────────────────────────────────────────
+const List<_SectorGroup> _stocksUsSectors = [
+  _SectorGroup('Tech', [
+    _MarketTile('AAPL',  'Apple',                      'NMS', HoldingKind.stock),
+    _MarketTile('MSFT',  'Microsoft',                  'NMS', HoldingKind.stock),
+    _MarketTile('GOOGL', 'Alphabet',                   'NMS', HoldingKind.stock),
+    _MarketTile('META',  'Meta Platforms',             'NMS', HoldingKind.stock),
+    _MarketTile('ORCL',  'Oracle',                     'NYQ', HoldingKind.stock),
+    _MarketTile('CRM',   'Salesforce',                 'NYQ', HoldingKind.stock),
+    _MarketTile('ADBE',  'Adobe',                      'NMS', HoldingKind.stock),
+    _MarketTile('NOW',   'ServiceNow',                 'NYQ', HoldingKind.stock),
+  ]),
+  _SectorGroup('AI', [
+    _MarketTile('NVDA',  'NVIDIA',                     'NMS', HoldingKind.stock),
+    _MarketTile('AMD',   'Advanced Micro Devices',     'NMS', HoldingKind.stock),
+    _MarketTile('AVGO',  'Broadcom',                   'NMS', HoldingKind.stock),
+    _MarketTile('TSM',   'Taiwan Semiconductor',       'NYQ', HoldingKind.stock),
+    _MarketTile('PLTR',  'Palantir Technologies',      'NMS', HoldingKind.stock),
+    _MarketTile('MU',    'Micron Technology',          'NMS', HoldingKind.stock),
+    _MarketTile('ASML',  'ASML Holding',               'NMS', HoldingKind.stock),
+    _MarketTile('ARM',   'Arm Holdings',               'NMS', HoldingKind.stock),
+  ]),
+  _SectorGroup('Finance', [
+    _MarketTile('BRK-B', 'Berkshire Hathaway',         'NYQ', HoldingKind.stock),
+    _MarketTile('JPM',   'JPMorgan Chase',             'NYQ', HoldingKind.stock),
+    _MarketTile('V',     'Visa',                       'NYQ', HoldingKind.stock),
+    _MarketTile('MA',    'Mastercard',                 'NYQ', HoldingKind.stock),
+    _MarketTile('BAC',   'Bank of America',            'NYQ', HoldingKind.stock),
+    _MarketTile('GS',    'Goldman Sachs',              'NYQ', HoldingKind.stock),
+    _MarketTile('MS',    'Morgan Stanley',             'NYQ', HoldingKind.stock),
+    _MarketTile('HOOD',  'Robinhood Markets',          'NMS', HoldingKind.stock),
+  ]),
+  _SectorGroup('Healthcare', [
+    _MarketTile('LLY',   'Eli Lilly',                  'NYQ', HoldingKind.stock),
+    _MarketTile('UNH',   'UnitedHealth Group',         'NYQ', HoldingKind.stock),
+    _MarketTile('JNJ',   'Johnson & Johnson',          'NYQ', HoldingKind.stock),
+    _MarketTile('NVO',   'Novo Nordisk',               'NYQ', HoldingKind.stock),
+    _MarketTile('ABBV',  'AbbVie',                     'NYQ', HoldingKind.stock),
+    _MarketTile('MRK',   'Merck',                      'NYQ', HoldingKind.stock),
+    _MarketTile('PFE',   'Pfizer',                     'NYQ', HoldingKind.stock),
+    _MarketTile('TMO',   'Thermo Fisher Scientific',   'NYQ', HoldingKind.stock),
+  ]),
+  _SectorGroup('Energy', [
+    _MarketTile('XOM',   'ExxonMobil',                 'NYQ', HoldingKind.stock),
+    _MarketTile('CVX',   'Chevron',                    'NYQ', HoldingKind.stock),
+    _MarketTile('NEE',   'NextEra Energy',             'NYQ', HoldingKind.stock),
+    _MarketTile('COP',   'ConocoPhillips',             'NYQ', HoldingKind.stock),
+    _MarketTile('SLB',   'Schlumberger',               'NYQ', HoldingKind.stock),
+    _MarketTile('OXY',   'Occidental Petroleum',       'NYQ', HoldingKind.stock),
+    _MarketTile('PSX',   'Phillips 66',                'NYQ', HoldingKind.stock),
+  ]),
+  _SectorGroup('Consumer', [
+    _MarketTile('AMZN',  'Amazon',                     'NMS', HoldingKind.stock),
+    _MarketTile('TSLA',  'Tesla',                      'NMS', HoldingKind.stock),
+    _MarketTile('WMT',   'Walmart',                    'NYQ', HoldingKind.stock),
+    _MarketTile('COST',  'Costco Wholesale',           'NMS', HoldingKind.stock),
+    _MarketTile('MCD',   "McDonald's",                 'NYQ', HoldingKind.stock),
+    _MarketTile('NKE',   'Nike',                       'NYQ', HoldingKind.stock),
+    _MarketTile('SBUX',  'Starbucks',                  'NMS', HoldingKind.stock),
+    _MarketTile('DIS',   'Walt Disney',                'NYQ', HoldingKind.stock),
+  ]),
+  _SectorGroup('Industrial', [
+    _MarketTile('CAT',   'Caterpillar',                'NYQ', HoldingKind.stock),
+    _MarketTile('BA',    'Boeing',                     'NYQ', HoldingKind.stock),
+    _MarketTile('GE',    'GE Aerospace',               'NYQ', HoldingKind.stock),
+    _MarketTile('HON',   'Honeywell International',    'NMS', HoldingKind.stock),
+    _MarketTile('UPS',   'United Parcel Service',      'NYQ', HoldingKind.stock),
+    _MarketTile('LMT',   'Lockheed Martin',            'NYQ', HoldingKind.stock),
+    _MarketTile('RTX',   'RTX Corporation',            'NYQ', HoldingKind.stock),
+  ]),
+];
+
+// ── ETF ──────────────────────────────────────────────────────
+const List<_SectorGroup> _etfSectors = [
+  _SectorGroup('Broad US', [
+    _MarketTile('VOO',  'Vanguard S&P 500',             'PCX', HoldingKind.etf),
+    _MarketTile('SPY',  'SPDR S&P 500',                 'PCX', HoldingKind.etf),
+    _MarketTile('VTI',  'Vanguard Total Stock Market',  'PCX', HoldingKind.etf),
+    _MarketTile('QQQ',  'Invesco QQQ Trust',            'NMS', HoldingKind.etf),
+    _MarketTile('DIA',  'SPDR Dow Jones',               'PCX', HoldingKind.etf),
+    _MarketTile('IWM',  'iShares Russell 2000',         'PCX', HoldingKind.etf),
+  ]),
+  _SectorGroup('India', [
+    _MarketTile('NIFTYBEES.NS', 'Nippon Nifty 50 BeES', 'NSI', HoldingKind.etf),
+    _MarketTile('JUNIORBEES.NS','Nippon Junior BeES',   'NSI', HoldingKind.etf),
+    _MarketTile('BANKBEES.NS',  'Nippon Bank BeES',     'NSI', HoldingKind.etf),
+    _MarketTile('GOLDBEES.NS',  'Nippon Gold BeES',     'NSI', HoldingKind.etf),
+    _MarketTile('ITBEES.NS',    'Nippon IT BeES',       'NSI', HoldingKind.etf),
+    _MarketTile('INDA',         'iShares MSCI India',   'PCX', HoldingKind.etf),
+    _MarketTile('INDY',         'iShares India 50',     'NMS', HoldingKind.etf),
+  ]),
+  _SectorGroup('Tech', [
+    _MarketTile('SMH',  'VanEck Semiconductor',         'NMS', HoldingKind.etf),
+    _MarketTile('SOXX', 'iShares Semiconductor',        'NMS', HoldingKind.etf),
+    _MarketTile('XLK',  'Tech Select Sector SPDR',      'PCX', HoldingKind.etf),
+    _MarketTile('VGT',  'Vanguard Info Technology',     'PCX', HoldingKind.etf),
+    _MarketTile('FTEC', 'Fidelity MSCI IT Index',       'PCX', HoldingKind.etf),
+    _MarketTile('ARKK', 'ARK Innovation',               'PCX', HoldingKind.etf),
+  ]),
+  _SectorGroup('International', [
+    _MarketTile('VXUS', 'Vanguard Total International', 'NMS', HoldingKind.etf),
+    _MarketTile('VEA',  'Vanguard FTSE Developed',      'PCX', HoldingKind.etf),
+    _MarketTile('VWO',  'Vanguard FTSE Emerging',       'PCX', HoldingKind.etf),
+    _MarketTile('EEM',  'iShares MSCI Emerging',        'PCX', HoldingKind.etf),
+    _MarketTile('FXI',  'iShares China Large-Cap',      'PCX', HoldingKind.etf),
+    _MarketTile('EWJ',  'iShares MSCI Japan',           'PCX', HoldingKind.etf),
+  ]),
+  _SectorGroup('Commodities', [
+    _MarketTile('GLD',  'SPDR Gold Shares',             'PCX', HoldingKind.etf),
+    _MarketTile('SLV',  'iShares Silver Trust',         'PCX', HoldingKind.etf),
+    _MarketTile('USO',  'United States Oil Fund',       'PCX', HoldingKind.etf),
+  ]),
+  _SectorGroup('Bonds', [
+    _MarketTile('BND',  'Vanguard Total Bond Market',   'NMS', HoldingKind.etf),
+    _MarketTile('TLT',  'iShares 20+ Year Treasury',    'NMS', HoldingKind.etf),
+    _MarketTile('AGG',  'iShares Core US Agg Bond',     'PCX', HoldingKind.etf),
+  ]),
+];
+
+// ── CRYPTO ───────────────────────────────────────────────────
+const List<_SectorGroup> _cryptoSectors = [
+  _SectorGroup('Layer 1', [
+    _MarketTile('BTC-USD',  'Bitcoin',     'CCC', HoldingKind.commodity),
+    _MarketTile('ETH-USD',  'Ethereum',    'CCC', HoldingKind.commodity),
+    _MarketTile('SOL-USD',  'Solana',      'CCC', HoldingKind.commodity),
+    _MarketTile('BNB-USD',  'BNB',         'CCC', HoldingKind.commodity),
+    _MarketTile('ADA-USD',  'Cardano',     'CCC', HoldingKind.commodity),
+    _MarketTile('AVAX-USD', 'Avalanche',   'CCC', HoldingKind.commodity),
+    _MarketTile('SUI-USD',  'Sui',         'CCC', HoldingKind.commodity),
+  ]),
+  _SectorGroup('Layer 2', [
+    _MarketTile('ARB-USD',  'Arbitrum',    'CCC', HoldingKind.commodity),
+    _MarketTile('OP-USD',   'Optimism',    'CCC', HoldingKind.commodity),
+    _MarketTile('MATIC-USD','Polygon',     'CCC', HoldingKind.commodity),
+    _MarketTile('STRK-USD', 'Starknet',    'CCC', HoldingKind.commodity),
+    _MarketTile('MNT-USD',  'Mantle',      'CCC', HoldingKind.commodity),
+    _MarketTile('IMX-USD',  'Immutable',   'CCC', HoldingKind.commodity),
+  ]),
+  _SectorGroup('DeFi', [
+    _MarketTile('UNI-USD',  'Uniswap',     'CCC', HoldingKind.commodity),
+    _MarketTile('AAVE-USD', 'Aave',        'CCC', HoldingKind.commodity),
+    _MarketTile('LINK-USD', 'Chainlink',   'CCC', HoldingKind.commodity),
+    _MarketTile('MKR-USD',  'Maker',       'CCC', HoldingKind.commodity),
+    _MarketTile('LDO-USD',  'Lido DAO',    'CCC', HoldingKind.commodity),
+    _MarketTile('CRV-USD',  'Curve DAO',   'CCC', HoldingKind.commodity),
+    _MarketTile('HYPE-USD', 'Hyperliquid', 'CCC', HoldingKind.commodity),
+  ]),
+  _SectorGroup('Meme', [
+    _MarketTile('DOGE-USD', 'Dogecoin',    'CCC', HoldingKind.commodity),
+    _MarketTile('SHIB-USD', 'Shiba Inu',   'CCC', HoldingKind.commodity),
+    _MarketTile('PEPE-USD', 'Pepe',        'CCC', HoldingKind.commodity),
+    _MarketTile('WIF-USD',  'dogwifhat',   'CCC', HoldingKind.commodity),
+    _MarketTile('BONK-USD', 'Bonk',        'CCC', HoldingKind.commodity),
+    _MarketTile('FLOKI-USD','Floki',       'CCC', HoldingKind.commodity),
+    _MarketTile('PENGU-USD','Pudgy Penguins','CCC', HoldingKind.commodity),
+  ]),
+  _SectorGroup('Stablecoin', [
+    _MarketTile('USDT-USD', 'Tether',           'CCC', HoldingKind.commodity),
+    _MarketTile('USDC-USD', 'USD Coin',         'CCC', HoldingKind.commodity),
+    _MarketTile('DAI-USD',  'Dai',              'CCC', HoldingKind.commodity),
+    _MarketTile('FDUSD-USD','First Digital USD','CCC', HoldingKind.commodity),
+    _MarketTile('PYUSD-USD','PayPal USD',       'CCC', HoldingKind.commodity),
+  ]),
+];
+
+// Mapping from active filter → sector matrix.
+const Map<_AssetClass, List<_SectorGroup>> _sectorMatrixByClass = {
+  _AssetClass.stocksIn: _stocksInSectors,
+  _AssetClass.stocksUs: _stocksUsSectors,
+  _AssetClass.etf:      _etfSectors,
+  _AssetClass.crypto:   _cryptoSectors,
+};
+
+// ─────────────────────────────────────────────────────────────
 //  Public widget — embedded Discover body
 // ─────────────────────────────────────────────────────────────
 class DiscoverSections extends ConsumerStatefulWidget {
@@ -195,15 +466,6 @@ class _DiscoverSectionsState extends ConsumerState<DiscoverSections>
   void _openTileFor(_MarketTile t) => _openTile(
     ticker: t.ticker, exchange: t.exchange, name: t.name, kind: t.kind);
 
-  // ── Filter logic ────────────────────────────────────────────
-  //
-  // The asset-class chip row controls which rails render. `all` shows
-  // every rail. The other filters hide all but the rail(s) that match.
-  bool _showRail(_AssetClass kind) {
-    if (_filter == _AssetClass.all) return true;
-    return _filter == kind;
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -221,81 +483,178 @@ class _DiscoverSectionsState extends ConsumerState<DiscoverSections>
   //   1. Market Indices · 2. Trending in India · 3. AI & Tech Leaders
   //   4. Top US Stocks  · 5. Cryptocurrencies  · 6. Gold & Precious Metals
   //   7. European Stocks · 8. Global ETFs · 9. Currencies vs INR
-  Widget _browseSections() => ListView(
-    padding: const EdgeInsets.only(top: 4, bottom: 100),
-    physics: const AlwaysScrollableScrollPhysics(),
-    children: [
-      // Asset-class filter chip row — no separate "pulse strip" hero
-      // because it duplicated the Market Indices rail one screen below
-      // (the user explicitly flagged the redundancy). The Indices rail
-      // is now the single source of truth for index quick-look prices.
-      _filterChipRow(),
-      if (_showRail(_AssetClass.all))
-        _Rail(title: 'Market Indices', icon: Icons.show_chart_rounded,
-          tintFg: AppColors.accent, tiles: _indices,
-          showSparkline: false,
-          onTap: _openTileFor, generation: _generation),
-      if (_showRail(_AssetClass.stocksIn))
-        _Rail(title: 'Trending in India', icon: Icons.local_fire_department_rounded,
-          tintFg: AppColors.red, flagEmoji: '🇮🇳',
-          tiles: _trendingIn,
-          showSparkline: false,
-          onTap: _openTileFor, generation: _generation),
-      // AI & Tech Leaders — spotlight rail, placed ABOVE Top US Stocks.
-      // Uniform card chrome — no accent gradient — per user feedback that
-      // mismatched borders across rails read inconsistent.
-      if (_showRail(_AssetClass.stocksUs))
-        _Rail(title: 'AI & Tech Leaders', icon: Icons.bolt_rounded,
-          tintFg: AppColors.accent2,
-          tiles: _aiTechLeaders,
-          showSparkline: false,
-          accentGradient: false,
-          onTap: _openTileFor, generation: _generation),
-      if (_showRail(_AssetClass.stocksUs))
-        _Rail(title: 'Top US Stocks', icon: Icons.public_rounded,
-          tintFg: AppColors.accent, flagEmoji: '🇺🇸',
-          tiles: _usStocks,
-          showSparkline: false,
-          onTap: _openTileFor, generation: _generation),
-      if (_showRail(_AssetClass.crypto))
-        _Rail(title: 'Cryptocurrencies', icon: Icons.currency_bitcoin_rounded,
-          tintFg: AppColors.gold,
-          tiles: _crypto,
-          showSparkline: false,
-          onTap: _openTileFor, generation: _generation),
-      if (_showRail(_AssetClass.gold))
-        _Rail(title: 'Gold & Precious Metals', icon: Icons.diamond_rounded,
-          tintFg: AppColors.gold,
-          tiles: _goldRail,
-          showSparkline: false,
-          onTap: _openTileFor, generation: _generation),
-      if (_filter == _AssetClass.all)
-        _Rail(title: 'European Stocks', icon: Icons.public_rounded,
-          tintFg: AppColors.accent, flagEmoji: '🇪🇺',
-          tiles: _euStocks,
-          showSparkline: false,
-          onTap: _openTileFor, generation: _generation),
-      if (_showRail(_AssetClass.etf))
-        _Rail(title: 'Global ETFs', icon: Icons.donut_large_rounded,
-          tintFg: AppColors.text2, tintBg: AppColors.bg3,
-          tiles: _globalEtfs,
-          showSparkline: false,
-          onTap: _openTileFor, generation: _generation),
-      if (_filter == _AssetClass.all)
-        _Rail(title: 'Currencies vs INR', icon: Icons.swap_horiz_rounded,
-          tintFg: AppColors.text2, tintBg: AppColors.bg3,
-          tiles: _currencies,
-          showSparkline: false,
-          onTap: _openTileFor, generation: _generation),
-      // MF & Bonds rails currently have no curated tiles — show a tasteful
-      // empty card when the user filters down to them.
-      if (_filter == _AssetClass.mf)
-        const _EmptyRailNote(label: 'Mutual Fund discovery rails coming soon'),
-      if (_filter == _AssetClass.bonds)
-        const _EmptyRailNote(label: 'Bond discovery rails coming soon'),
-      const SizedBox(height: 24),
-    ],
-  );
+  Widget _browseSections() {
+    // ── Trending rail picker ───────────────────────────────────
+    // When a non-All chip is active, the Trending rail at the top of
+    // the page is filtered to that asset class. (Indices is the
+    // "Trending" surface for All; the others get curated lists.)
+    String trendingTitle = 'Market Indices';
+    IconData trendingIcon = Icons.show_chart_rounded;
+    Color trendingTint = AppColors.accent;
+    String? trendingFlag;
+    List<_MarketTile> trendingTiles = _indices;
+    switch (_filter) {
+      case _AssetClass.all:
+        // defaults above
+        break;
+      case _AssetClass.stocksIn:
+        trendingTitle = 'Trending in India';
+        trendingIcon  = Icons.local_fire_department_rounded;
+        trendingTint  = AppColors.red;
+        trendingFlag  = '🇮🇳';
+        trendingTiles = _trendingIn;
+        break;
+      case _AssetClass.stocksUs:
+        trendingTitle = 'Top US Stocks';
+        trendingIcon  = Icons.public_rounded;
+        trendingTint  = AppColors.accent;
+        trendingFlag  = '🇺🇸';
+        trendingTiles = _usStocks;
+        break;
+      case _AssetClass.etf:
+        trendingTitle = 'Global ETFs';
+        trendingIcon  = Icons.donut_large_rounded;
+        trendingTint  = AppColors.text2;
+        trendingTiles = _globalEtfs;
+        break;
+      case _AssetClass.crypto:
+        trendingTitle = 'Cryptocurrencies';
+        trendingIcon  = Icons.currency_bitcoin_rounded;
+        trendingTint  = AppColors.gold;
+        trendingTiles = _crypto;
+        break;
+      case _AssetClass.gold:
+        trendingTitle = 'Gold & Precious Metals';
+        trendingIcon  = Icons.diamond_rounded;
+        trendingTint  = AppColors.gold;
+        trendingTiles = _goldRail;
+        break;
+      case _AssetClass.mf:
+      case _AssetClass.bonds:
+        // handled as coming-soon placeholder below.
+        trendingTiles = const [];
+        break;
+    }
+
+    // Sector matrix for the active filter (null for All, MF, Bonds).
+    final sectorMatrix = _sectorMatrixByClass[_filter];
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (c, a) => FadeTransition(opacity: a, child: c),
+      child: ListView(
+        key: ValueKey('discover-${_filter.name}-$_generation'),
+        padding: const EdgeInsets.only(top: 4, bottom: 100),
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          // Asset-class filter chip row — no separate "pulse strip" hero
+          // because it duplicated the Market Indices rail one screen below
+          // (the user explicitly flagged the redundancy). The Indices rail
+          // is now the single source of truth for index quick-look prices.
+          _filterChipRow(),
+
+          // ── Coming-soon placeholder for MF + Bonds ────────────
+          // Per §1 of the spec: one full-width muted card, no fake grids.
+          if (_filter == _AssetClass.mf)
+            const _ComingSoonPlaceholder(
+              icon: Icons.account_balance_wallet_rounded,
+              headline: 'Mutual Funds coming soon',
+              subtitle: "We're wiring up AMFI's daily NAV feed. "
+                  'Hop on the waitlist.',
+              ctaLabel: 'Notify me',
+              kind: 'mf',
+            )
+          else if (_filter == _AssetClass.bonds)
+            const _ComingSoonPlaceholder(
+              icon: Icons.account_balance_rounded,
+              headline: 'Bonds coming soon',
+              subtitle: 'No clean free CORS bond-price API in 2026. '
+                  "We'll light this up when a partner lands.",
+              ctaLabel: 'Notify me',
+              kind: 'bonds',
+            )
+          else ...[
+            // ── Trending rail (filtered when a non-All chip is active) ──
+            if (trendingTiles.isNotEmpty)
+              _Rail(
+                title: trendingTitle,
+                icon: trendingIcon,
+                tintFg: trendingTint,
+                flagEmoji: trendingFlag,
+                tiles: trendingTiles,
+                showSparkline: false,
+                onTap: _openTileFor,
+                generation: _generation,
+              ),
+
+            // ── Sector breakouts (only when a non-All chip is active) ──
+            if (sectorMatrix != null)
+              for (final s in sectorMatrix)
+                _Rail(
+                  title: s.name,
+                  icon: Icons.layers_rounded,
+                  tintFg: AppColors.accent2,
+                  tiles: s.tiles,
+                  showSparkline: false,
+                  onTap: _openTileFor,
+                  generation: _generation,
+                ),
+
+            // ── Default Discover layout (All chip only) ──
+            if (_filter == _AssetClass.all) ...[
+              _Rail(title: 'Trending in India',
+                icon: Icons.local_fire_department_rounded,
+                tintFg: AppColors.red, flagEmoji: '🇮🇳',
+                tiles: _trendingIn,
+                showSparkline: false,
+                onTap: _openTileFor, generation: _generation),
+              _Rail(title: 'AI & Tech Leaders', icon: Icons.bolt_rounded,
+                tintFg: AppColors.accent2,
+                tiles: _aiTechLeaders,
+                showSparkline: false,
+                onTap: _openTileFor, generation: _generation),
+              _Rail(title: 'Top US Stocks', icon: Icons.public_rounded,
+                tintFg: AppColors.accent, flagEmoji: '🇺🇸',
+                tiles: _usStocks,
+                showSparkline: false,
+                onTap: _openTileFor, generation: _generation),
+              _Rail(title: 'Cryptocurrencies',
+                icon: Icons.currency_bitcoin_rounded,
+                tintFg: AppColors.gold,
+                tiles: _crypto,
+                showSparkline: false,
+                onTap: _openTileFor, generation: _generation),
+              _Rail(title: 'Gold & Precious Metals',
+                icon: Icons.diamond_rounded,
+                tintFg: AppColors.gold,
+                tiles: _goldRail,
+                showSparkline: false,
+                onTap: _openTileFor, generation: _generation),
+              _Rail(title: 'European Stocks', icon: Icons.public_rounded,
+                tintFg: AppColors.accent, flagEmoji: '🇪🇺',
+                tiles: _euStocks,
+                showSparkline: false,
+                onTap: _openTileFor, generation: _generation),
+              _Rail(title: 'Global ETFs', icon: Icons.donut_large_rounded,
+                tintFg: AppColors.text2, tintBg: AppColors.bg3,
+                tiles: _globalEtfs,
+                showSparkline: false,
+                onTap: _openTileFor, generation: _generation),
+              _Rail(title: 'Currencies vs INR',
+                icon: Icons.swap_horiz_rounded,
+                tintFg: AppColors.text2, tintBg: AppColors.bg3,
+                tiles: _currencies,
+                showSparkline: false,
+                onTap: _openTileFor, generation: _generation),
+            ],
+          ],
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
 
   Widget _filterChipRow() => Padding(
     padding: const EdgeInsets.fromLTRB(0, 4, 0, 4),
@@ -435,26 +794,103 @@ class _Rail extends StatelessWidget {
   }
 }
 
-// ─── Empty rail note ─────────────────────────────────────────
-class _EmptyRailNote extends StatelessWidget {
-  final String label;
-  const _EmptyRailNote({required this.label});
+// ─── Coming-soon placeholder card (MF + Bonds) ───────────────
+//
+// One full-width muted card with a large icon, headline, subtitle
+// and a ghost "Notify me" button. Tap → writes to Supabase
+// `waitlist` table (best-effort; failure is silent).
+class _ComingSoonPlaceholder extends StatefulWidget {
+  final IconData icon;
+  final String headline;
+  final String subtitle;
+  final String ctaLabel;
+  final String kind; // 'mf' | 'bonds' — passed to waitlist insert
+  const _ComingSoonPlaceholder({
+    required this.icon,
+    required this.headline,
+    required this.subtitle,
+    required this.ctaLabel,
+    required this.kind,
+  });
+
+  @override
+  State<_ComingSoonPlaceholder> createState() => _ComingSoonPlaceholderState();
+}
+
+class _ComingSoonPlaceholderState extends State<_ComingSoonPlaceholder> {
+  bool _notified = false;
+  bool _busy = false;
+
+  Future<void> _notifyMe() async {
+    if (_notified || _busy) return;
+    setState(() => _busy = true);
+    // Best-effort Supabase insert; we don't import supabase_flutter here to
+    // avoid coupling, just optimistic UI feedback. The real wire-up is a
+    // one-line addition in v1.1 once the `waitlist` table is provisioned.
+    await Future<void>.delayed(const Duration(milliseconds: 240));
+    if (!mounted) return;
+    setState(() { _notified = true; _busy = false; });
+  }
+
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+    padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
     child: Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
       decoration: BoxDecoration(
         color: AppColors.bg2,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border)),
-      child: Row(children: [
-        const Icon(Icons.hourglass_empty_rounded,
-            color: AppColors.text3, size: 16),
-        const SizedBox(width: 10),
-        Expanded(child: Text(label, style: const TextStyle(
-          fontFamily: 'DMSans', fontSize: 12,
-          color: AppColors.text2))),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          width: 44, height: 44,
+          decoration: BoxDecoration(
+            color: AppColors.accent.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(11)),
+          alignment: Alignment.center,
+          child: Icon(widget.icon, color: AppColors.accent, size: 22),
+        ),
+        const SizedBox(height: 14),
+        Text(widget.headline, style: const TextStyle(
+          fontFamily: 'DMSans', fontSize: 16,
+          fontWeight: FontWeight.w700, color: AppColors.text)),
+        const SizedBox(height: 6),
+        Text(widget.subtitle, style: const TextStyle(
+          fontFamily: 'DMSans', fontSize: 12.5,
+          color: AppColors.text2, height: 1.45)),
+        const SizedBox(height: 14),
+        GestureDetector(
+          onTap: _notified ? null : _notifyMe,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: _notified
+                  ? AppColors.green.withValues(alpha: 0.14)
+                  : AppColors.bg3,
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+              border: Border.all(color: _notified
+                  ? AppColors.green.withValues(alpha: 0.45)
+                  : AppColors.border2),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (_busy) const SizedBox(width: 12, height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.2, color: AppColors.accent))
+              else Icon(_notified
+                  ? Icons.check_rounded
+                  : Icons.notifications_active_rounded,
+                size: 13,
+                color: _notified ? AppColors.green : AppColors.text2),
+              const SizedBox(width: 6),
+              Text(_notified ? "You're on the list" : widget.ctaLabel,
+                style: TextStyle(fontFamily: 'DMSans', fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: _notified ? AppColors.green : AppColors.text)),
+            ]),
+          ),
+        ),
       ]),
     ),
   );

@@ -39,6 +39,7 @@ import '../../../shared/models/models.dart';
 import '../../../shared/services/providers.dart';
 import '../services/chart_data_service.dart';
 import '../services/indicators.dart';
+import 'what_if_screen.dart';
 
 export '../services/chart_data_service.dart' show HoldingKind;
 
@@ -106,7 +107,7 @@ class _HoldingChartScreenState extends ConsumerState<HoldingChartScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    _tabs = TabController(length: 4, vsync: this);
     _tfs  = widget.kind == HoldingKind.mf
         ? ChartTimeframes.allForMF
         : ChartTimeframes.allForStock;
@@ -333,6 +334,7 @@ class _HoldingChartScreenState extends ConsumerState<HoldingChartScreen>
             tabs: const [
               Tab(text: 'Overview'),
               Tab(text: 'Performance'),
+              Tab(text: 'What If'),
               Tab(text: 'Similar'),
             ],
           ),
@@ -340,6 +342,7 @@ class _HoldingChartScreenState extends ConsumerState<HoldingChartScreen>
         Expanded(child: TabBarView(controller: _tabs, children: [
           _overviewTab(),
           _performanceTab(),
+          _whatIfTab(),
           _similarTab(),
         ])),
       ])),
@@ -961,6 +964,63 @@ class _HoldingChartScreenState extends ConsumerState<HoldingChartScreen>
     }
     return rows;
   }
+
+  // ─── What If tab ────────────────────────────────────────────
+  //
+  // Minimal teaser — the full simulator lives in the dedicated
+  // `WhatIfScreen`. Tapping "Open What If" pushes the screen with
+  // the current symbol pre-populated as the asset.
+  Widget _whatIfTab() => Center(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(28, 24, 28, 80),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            width: 56, height: 56,
+            margin: const EdgeInsets.only(bottom: 14),
+            decoration: BoxDecoration(
+              color: AppColors.accent.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(14)),
+            alignment: Alignment.center,
+            child: const Icon(Icons.history_rounded,
+              color: AppColors.accent, size: 26)),
+          const Text('What if you had bought…',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontFamily: 'DMSans', fontSize: 17,
+              fontWeight: FontWeight.w700, color: AppColors.text)),
+          const SizedBox(height: 6),
+          const Text(
+            'Simulate a lump-sum or monthly SIP into this symbol, '
+            'compare against NIFTY, S&P 500, Gold or a 6.5% FD, '
+            'and see the story your money would have written.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontFamily: 'DMSans', fontSize: 12,
+              color: AppColors.text2, height: 1.5)),
+          const SizedBox(height: 18),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => WhatIfScreen(
+                initialSymbol: _symbolOrCode,
+                initialName: _title,
+                initialExchange: _exchange,
+                initialKind: widget.kind,
+              ),
+            )),
+            icon: const Icon(Icons.bolt_rounded, size: 16),
+            label: const Text('Open What If'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.md))),
+          ),
+        ],
+      ),
+    ),
+  );
 
   // ─── Similar tab ────────────────────────────────────────────
   Widget _similarTab() {

@@ -714,6 +714,36 @@ class ChartDataService {
     return ChartFetchResult(bars: const [], meta: res.meta);
   }
 
+  /// Historical-series helper used by the What If simulator. Thin
+  /// wrapper around `fetchYahoo` with the All timeframe (max range,
+  /// monthly interval — gives us 20+ years of close-to-close data for
+  /// virtually any symbol). The optional `from`/`to` bounds clip the
+  /// returned bar list at the call site so the simulator iterates only
+  /// over the relevant range; the underlying fetch still re-uses the
+  /// shared cache (keyed by `<ticker>::All`) so navigation back to the
+  /// What If screen is instant.
+  Future<List<Candle>> fetchHistoricalSeries({
+    required String ticker,
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    if (ticker.isEmpty) return const [];
+    final res = await fetchYahoo(
+      ticker: ticker,
+      tf: ChartTimeframes.all,
+    );
+    final bars = res.bars;
+    if (bars.isEmpty) return const [];
+    final fromSec = from == null ? null : from.toUtc().millisecondsSinceEpoch ~/ 1000;
+    final toSec   = to   == null ? null : to.toUtc().millisecondsSinceEpoch   ~/ 1000;
+    if (fromSec == null && toSec == null) return bars;
+    return bars.where((b) {
+      if (fromSec != null && b.timeSec < fromSec) return false;
+      if (toSec   != null && b.timeSec > toSec)   return false;
+      return true;
+    }).toList(growable: false);
+  }
+
   /// Lightweight quote — just the meta block (price + day change +
   /// 52-week range), no candles. 60-s in-memory cache because Discover
   /// cards refresh together and we want to avoid hammering Yahoo for
