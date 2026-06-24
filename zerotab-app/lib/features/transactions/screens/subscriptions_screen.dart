@@ -104,7 +104,7 @@ class SubscriptionsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final txnAsync = ref.watch(transactionsProvider);
+    final txnAsync = ref.watch(periodOnlyTransactionsProvider);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
