@@ -535,7 +535,12 @@ class _LoansSectionCard extends StatelessWidget {
   double get _avgRate {
     final rated = loans.where((a) => (a.interestRate ?? 0) > 0).toList();
     if (rated.isEmpty) return 0;
-    return rated.fold(0.0, (s, a) => s + (a.interestRate ?? 0)) / rated.length;
+    final totalBalance = rated.fold(0.0, (s, a) => s + (a.currentBalance?.abs() ?? 0));
+    if (totalBalance <= 0) {
+      return rated.fold(0.0, (s, a) => s + (a.interestRate ?? 0)) / rated.length;
+    }
+    return rated.fold(0.0, (s, a) =>
+        s + (a.interestRate ?? 0) * (a.currentBalance?.abs() ?? 0)) / totalBalance;
   }
 
   @override

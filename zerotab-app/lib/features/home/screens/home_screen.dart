@@ -15,7 +15,6 @@ import '../widgets/sparkline_chart.dart';
 import '../widgets/insight_card.dart';
 import '../../../shared/widgets/ai_brain_icon.dart';
 
-// ── Orange warning colour (AppColors.amber == AppColors.gold → alias bug) ──
 const _kOrange = AppColors.gold;
 
 class HomeScreen extends ConsumerWidget {
@@ -683,10 +682,10 @@ class _NotificationBell extends ConsumerWidget {
   const _NotificationBell({required this.onTap});
 
   int _countAlerts(FinancialSnapshotModel? snap) {
-    if (snap == null) return 1; // AI insight always
-    int count = 1; // AI insight
-    if (snap.emiRatio > 0.35)   count++;
-    if (snap.creditUtil > 0.5)  count++;
+    if (snap == null) return 0;
+    int count = 0;
+    if (snap.emiRatio > 0.35)    count++;
+    if (snap.creditUtil > 0.5)   count++;
     if (snap.savingsRate < 0.10) count++;
     return count;
   }

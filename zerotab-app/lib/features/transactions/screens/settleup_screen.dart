@@ -1954,22 +1954,26 @@ class _BalancesTab extends StatelessWidget {
     required this.onSettle,
   });
 
-  // Multi-app UPI payment sheet
-  void _showUpiSheet(BuildContext context, String toName, int amount) {
+  // Multi-app UPI payment sheet — launches UPI app then auto-marks as paid
+  void _showUpiSheet(BuildContext context, String toName, int amount,
+      {VoidCallback? onPaid}) {
     final rupees = toR(amount).toStringAsFixed(2);
     final note   = Uri.encodeComponent('Hisaab settle - $toName');
 
     Future<void> launch(String scheme) async {
       final uri = Uri.parse(scheme);
+      bool launched = false;
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
+        launched = true;
       } else {
-        // Fallback: generic UPI chooser
         final fallback = Uri.parse('upi://pay?am=$rupees&cu=INR&tn=$note');
         if (await canLaunchUrl(fallback)) {
           await launchUrl(fallback, mode: LaunchMode.externalApplication);
+          launched = true;
         }
       }
+      if (launched) onPaid?.call();
     }
 
     showModalBottomSheet(
@@ -2127,9 +2131,10 @@ class _BalancesTab extends StatelessWidget {
                 if (isCurrentPaying) ...[
                   const SizedBox(height: 10),
                   Row(children: [
-                    // UPI Pay button
+                    // UPI Pay button — auto-marks paid after app launch
                     Expanded(child: GestureDetector(
-                      onTap: () => _showUpiSheet(context, s.toName, s.amount),
+                      onTap: () => _showUpiSheet(context, s.toName, s.amount,
+                          onPaid: () => onSettle(s.fromId, s.toId, s.amount)),
                       child: Container(
                         height: 36,
                         decoration: BoxDecoration(

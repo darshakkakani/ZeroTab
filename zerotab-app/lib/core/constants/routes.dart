@@ -8,6 +8,7 @@ import '../../features/auth/screens/phone_otp_screen.dart';
 import '../../features/connect/screens/connect_accounts_screen.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/transactions/screens/transactions_screen.dart';
+import '../../features/transactions/screens/subscriptions_screen.dart';
 import '../../features/investments/screens/investments_screen.dart';
 import '../../features/cashflow/screens/cashflow_screen.dart';
 import '../../features/debt/screens/debt_tracker_screen.dart';
@@ -97,6 +98,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/cashflow',
             pageBuilder: (_, s) => _instant(s, const CashFlowScreen()),
+          ),
+          GoRoute(
+            path: '/subscriptions',
+            pageBuilder: (_, s) => _fade(s, const SubscriptionsScreen()),
           ),
           GoRoute(
             path: '/debt',

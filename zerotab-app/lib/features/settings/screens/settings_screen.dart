@@ -63,14 +63,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   // ── Compute a clean display name ─────────────────────────
   String _displayName(String? profileName) {
-    final authUser = Supabase.instance.client.auth.currentUser;
     final isDefault = profileName == null ||
         profileName.isEmpty ||
         profileName.toLowerCase() == 'demo user';
     if (!isDefault) return profileName!;
-    final email = profileName == null || isDefault
-        ? (authUser?.email ?? '')
-        : '';
+    final authUser = Supabase.instance.client.auth.currentUser;
+    final email = authUser?.email ?? '';
     if (email.isNotEmpty) return email.split('@').first;
     if (authUser?.phone?.isNotEmpty == true) return authUser!.phone!;
     return 'User';

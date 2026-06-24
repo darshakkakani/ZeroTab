@@ -223,6 +223,16 @@ class CashFlowScreen extends ConsumerWidget {
                   ),
                 ),
 
+                const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+                // ── Forward cash runway ──────────────────
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                  sliver: SliverToBoxAdapter(
+                    child: _RunwayCard(cfData: cfData),
+                  ),
+                ),
+
                 const SliverPadding(
                     padding: EdgeInsets.only(bottom: 28)),
               ],
@@ -505,4 +515,233 @@ class _CategoryBreakdown extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Forward Cash Runway ───────────────────────────────────
+//
+// Uses the last 3 months of cashflow data to compute:
+//   avgMonthlyIncome, avgMonthlyBurn → netMonthlyPosition
+// Then projects forward to find the date when accumulated
+// net position would go negative (overdraft warning), or
+// shows "On track" if income > burn.
+
+class _RunwayCard extends StatelessWidget {
+  final List<Map<String, dynamic>> cfData;
+  const _RunwayCard({required this.cfData});
+
+  @override
+  Widget build(BuildContext context) {
+    if (cfData.isEmpty) return const SizedBox.shrink();
+
+    // Use last 3 months for the projection baseline
+    final recent = cfData.length > 3 ? cfData.sublist(cfData.length - 3) : cfData;
+    final avgIncome = recent.fold(0.0, (s, m) => s + (m['income'] as num).toDouble()) / recent.length;
+    final avgBurn   = recent.fold(0.0, (s, m) => s + (m['spend'] as num).toDouble())  / recent.length;
+    final netMonthly = avgIncome - avgBurn;
+
+    // Current month position: last entry may be partial
+    final currentMonth = cfData.isNotEmpty ? cfData.last : <String, dynamic>{};
+    final thisMonthIncome = (currentMonth['income'] as num? ?? 0).toDouble();
+    final thisMonthSpend  = (currentMonth['spend']  as num? ?? 0).toDouble();
+    final thisMonthNet    = thisMonthIncome - thisMonthSpend;
+
+    // Days remaining this month
+    final now = DateTime.now();
+    final daysInMonth   = DateTime(now.year, now.month + 1, 0).day;
+    final daysRemaining = daysInMonth - now.day;
+    final monthFraction = daysRemaining / daysInMonth;
+
+    // Projected end-of-month position from today
+    final projectedEOM = thisMonthNet + netMonthly * monthFraction;
+
+    final isOnTrack = netMonthly >= 0 || projectedEOM >= 0;
+
+    // Days until projected zero crossing (only relevant when burning)
+    int? daysToZero;
+    if (!isOnTrack && netMonthly < 0) {
+      // Assume cumulative current position approximated by thisMonthNet
+      // zero crossing: thisMonthNet + netMonthly/30 * d = 0
+      final dailyNet = netMonthly / 30;
+      if (dailyNet < 0) {
+        daysToZero = ((-thisMonthNet) / dailyNet.abs()).ceil();
+        daysToZero = daysToZero! < 0 ? null : daysToZero;
+      }
+    }
+
+    final accentColor = isOnTrack ? AppColors.green : AppColors.red;
+    final bgColor     = accentColor.withOpacity(0.07);
+    final borderColor = accentColor.withOpacity(0.20);
+
+    // Build the overdraft date string
+    String statusLine;
+    String subLine;
+    if (isOnTrack) {
+      statusLine = 'Cash flow on track';
+      subLine    = 'Saving ${formatInr(netMonthly)}/mo on average — keep it up!';
+    } else if (daysToZero != null && daysToZero <= 31) {
+      final crossDate = now.add(Duration(days: daysToZero));
+      final label = '${_monthName(crossDate.month)} ${crossDate.day}';
+      statusLine = 'Buffer warning — $label';
+      subLine    = 'At current pace your monthly surplus runs out around $label. '
+                   'Cut ${formatInr(-netMonthly)}/mo to break even.';
+    } else {
+      statusLine = 'Spending above income';
+      subLine    = 'You\'re burning ${formatInr(-netMonthly)} more than you earn each month. '
+                   'Review recurring charges.';
+    }
+
+    // Mini 6-bar projection
+    final bars = _buildProjectionBars(cfData, netMonthly, 6);
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Header row
+        Row(children: [
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: accentColor.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              isOnTrack ? Icons.trending_up_rounded : Icons.warning_amber_rounded,
+              color: accentColor, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(statusLine,
+                style: TextStyle(fontFamily: 'DMSans', fontSize: 14,
+                    fontWeight: FontWeight.w700, color: accentColor)),
+              const SizedBox(height: 2),
+              Text('Forward Cash Runway',
+                style: const TextStyle(fontFamily: 'DMSans',
+                    fontSize: 11, color: AppColors.text3)),
+            ],
+          )),
+        ]),
+
+        const SizedBox(height: 14),
+
+        // Projection bars
+        SizedBox(
+          height: 48,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: bars.map((b) {
+              final isFuture = b['future'] as bool;
+              final frac    = b['frac'] as double;
+              final isNeg   = frac < 0;
+              return Expanded(child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 400),
+                      height: (frac.abs() * 40).clamp(3.0, 40.0),
+                      decoration: BoxDecoration(
+                        color: isNeg
+                            ? AppColors.red.withOpacity(isFuture ? 0.4 : 0.7)
+                            : AppColors.green.withOpacity(isFuture ? 0.3 : 0.55),
+                        borderRadius: BorderRadius.circular(3),
+                        border: isFuture
+                            ? Border.all(color: (isNeg ? AppColors.red : AppColors.green).withOpacity(0.5),
+                                style: BorderStyle.solid)
+                            : null,
+                      ),
+                    ),
+                  ],
+                ),
+              ));
+            }).toList(),
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // Summary line
+        Text(subLine,
+          style: const TextStyle(fontFamily: 'DMSans', fontSize: 12,
+              color: AppColors.text3, height: 1.45)),
+
+        const SizedBox(height: 14),
+
+        // Income vs burn stats
+        Row(children: [
+          _RunwayStat(label: 'Avg income',
+              value: formatInr(avgIncome), color: AppColors.green),
+          const SizedBox(width: 12),
+          _RunwayStat(label: 'Avg spend',
+              value: formatInr(avgBurn), color: AppColors.coral),
+          const SizedBox(width: 12),
+          _RunwayStat(
+            label: netMonthly >= 0 ? 'Monthly save' : 'Monthly deficit',
+            value: formatInr(netMonthly.abs()),
+            color: netMonthly >= 0 ? AppColors.teal : AppColors.red,
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  // Build projection bars: past months actual + future projected
+  static List<Map<String, dynamic>> _buildProjectionBars(
+      List<Map<String, dynamic>> cfData, double netMonthly, int totalBars) {
+    final past = cfData.map((m) {
+      final income = (m['income'] as num).toDouble();
+      final spend  = (m['spend'] as num).toDouble();
+      final net    = income - spend;
+      final maxVal = [income, spend].reduce((a, b) => a > b ? a : b);
+      return {'frac': maxVal > 0 ? net / maxVal : 0.0, 'future': false};
+    }).toList();
+
+    final pastCount   = past.length.clamp(0, totalBars - 2);
+    final futureCount = totalBars - pastCount;
+    final maxAbs      = netMonthly.abs().clamp(1.0, double.infinity);
+
+    final future = List.generate(futureCount, (i) => {
+      'frac': (netMonthly / (maxAbs * 1.2)).clamp(-1.0, 1.0),
+      'future': true,
+    });
+
+    final result = [...past.sublist(past.length - pastCount), ...future];
+    return result;
+  }
+
+  static String _monthName(int month) => const [
+    '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ][month];
+}
+
+class _RunwayStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  const _RunwayStat({required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label,
+        style: const TextStyle(fontFamily: 'DMSans',
+            fontSize: 10, color: AppColors.text3)),
+      const SizedBox(height: 2),
+      Text(value,
+        style: TextStyle(
+          fontFamily: 'DMMono', fontSize: 12,
+          fontWeight: FontWeight.w600, color: color,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        )),
+    ]),
+  );
 }

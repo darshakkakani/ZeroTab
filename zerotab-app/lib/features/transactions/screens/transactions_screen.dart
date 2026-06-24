@@ -3,6 +3,7 @@ import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'habits_widgets.dart';
 import 'settleup_screen.dart';
+import 'subscriptions_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1667,8 +1668,10 @@ class _SmartToolsGrid extends StatelessWidget {
         color: AppColors.teal,
         label: 'Radar',
         sublabel: subCount > 0 ? '$subCount drains found' : 'Detect drains',
-        onTap: () => _openSheet(context, 'Bill Radar',
-            BillRadar(allTxns: txns)),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => const SubscriptionsScreen(),
+          fullscreenDialog: true,
+        )),
       ),
       _ToolTile(
         icon: Icons.insights_rounded,
